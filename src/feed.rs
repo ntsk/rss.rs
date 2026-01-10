@@ -9,6 +9,13 @@ pub struct Article {
     pub feed_title: String,
 }
 
+fn sanitize_text(text: impl AsRef<str>) -> String {
+    text.as_ref()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 pub fn fetch_articles(url: &str) -> Result<Vec<Article>> {
     let content = reqwest::blocking::get(url)?.text()?;
     parse_rss(&content, url)
@@ -27,12 +34,12 @@ pub fn parse_rss(content: &str, _feed_url: &str) -> Result<Vec<Article>> {
 }
 
 fn parse_rss_channel(channel: &rss::Channel) -> Result<Vec<Article>> {
-    let feed_title = channel.title().to_string();
+    let feed_title = sanitize_text(channel.title());
     let articles = channel
         .items()
         .iter()
         .filter_map(|item| {
-            let title = item.title()?.to_string();
+            let title = sanitize_text(item.title()?);
             let link = item.link()?.to_string();
             let published = item.pub_date().and_then(parse_date);
 
@@ -75,12 +82,12 @@ fn parse_date(date_str: &str) -> Option<DateTime<Utc>> {
 }
 
 fn parse_atom_feed(feed: &atom_syndication::Feed) -> Result<Vec<Article>> {
-    let feed_title = feed.title().to_string();
+    let feed_title = sanitize_text(feed.title());
     let articles = feed
         .entries()
         .iter()
         .filter_map(|entry| {
-            let title = entry.title().to_string();
+            let title = sanitize_text(entry.title());
             let link = entry.links().first()?.href().to_string();
             let published = entry.updated().with_timezone(&Utc);
 
@@ -179,5 +186,46 @@ mod tests {
         let result = parse_rss("invalid xml", "https://example.com/feed.xml");
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_rss_removes_newlines_from_titles() {
+        let rss_with_newlines = r#"<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Sample
+Blog</title>
+    <item>
+      <title>First
+Post</title>
+      <link>https://example.com/first</link>
+    </item>
+  </channel>
+</rss>"#;
+
+        let articles = parse_rss(rss_with_newlines, "https://example.com/feed.xml").unwrap();
+
+        assert_eq!(articles[0].feed_title, "Sample Blog");
+        assert_eq!(articles[0].title, "First Post");
+    }
+
+    #[test]
+    fn test_parse_atom_removes_newlines_from_titles() {
+        let atom_with_newlines = r#"<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Sample
+Atom</title>
+  <entry>
+    <title>Atom
+Entry</title>
+    <link href="https://example.com/atom-entry"/>
+    <updated>2025-01-03T12:00:00Z</updated>
+  </entry>
+</feed>"#;
+
+        let articles = parse_rss(atom_with_newlines, "https://example.com/atom.xml").unwrap();
+
+        assert_eq!(articles[0].feed_title, "Sample Atom");
+        assert_eq!(articles[0].title, "Atom Entry");
     }
 }
