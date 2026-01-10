@@ -42,6 +42,9 @@ mod tests {
         let home = std::env::var("HOME").unwrap();
         let path = get_config_path_with_xdg(None);
 
-        assert_eq!(path, PathBuf::from(format!("{}/.config/rss/feeds.json", home)));
+        assert_eq!(
+            path,
+            PathBuf::from(format!("{}/.config/rss/feeds.json", home))
+        );
     }
 }

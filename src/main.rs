@@ -68,7 +68,6 @@ fn run() -> Result<()> {
     Ok(())
 }
 
-
 fn show_articles(manager: &SubscriptionManager) -> Result<()> {
     let feeds = manager.list();
     if feeds.is_empty() {

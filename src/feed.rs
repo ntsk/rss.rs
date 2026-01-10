@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use chrono::{DateTime, Utc};
 
 #[derive(Debug, Clone)]
@@ -34,7 +34,7 @@ fn parse_rss_channel(channel: &rss::Channel) -> Result<Vec<Article>> {
         .filter_map(|item| {
             let title = item.title()?.to_string();
             let link = item.link()?.to_string();
-            let published = item.pub_date().and_then(|d| parse_date(d));
+            let published = item.pub_date().and_then(parse_date);
 
             Some(Article {
                 title,

@@ -4,7 +4,7 @@ use anyhow::Result;
 use crossterm::{
     event::{self, Event, KeyCode, KeyEventKind},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use ratatui::{
     prelude::*,
@@ -32,10 +32,10 @@ pub fn run_app(articles: Vec<Article>) -> Result<()> {
     disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
 
-    if let Some(article) = app.selected_article() {
-        if app.should_open {
-            open::that(&article.link)?;
-        }
+    if let Some(article) = app.selected_article()
+        && app.should_open
+    {
+        open::that(&article.link)?;
     }
 
     result
@@ -55,30 +55,29 @@ fn run_event_loop(
             break;
         }
 
-        if app.should_auto_refresh() || app.should_reload {
-            if let Some(new_articles) = fetch_all_articles() {
-                app.update_articles(new_articles);
-            }
+        if (app.should_auto_refresh() || app.should_reload)
+            && let Some(new_articles) = fetch_all_articles()
+        {
+            app.update_articles(new_articles);
         }
 
-        if event::poll(tick_rate)? {
-            if let Event::Key(key) = event::read()? {
-                if key.kind == KeyEventKind::Press {
-                    match key.code {
-                        KeyCode::Char('q') | KeyCode::Esc => app.quit(),
-                        KeyCode::Down | KeyCode::Char('j') => {
-                            app.select_next();
-                            list_state.select(Some(app.selected));
-                        }
-                        KeyCode::Up | KeyCode::Char('k') => {
-                            app.select_previous();
-                            list_state.select(Some(app.selected));
-                        }
-                        KeyCode::Enter => app.open_selected(),
-                        KeyCode::Char('r') => app.request_reload(),
-                        _ => {}
-                    }
+        if event::poll(tick_rate)?
+            && let Event::Key(key) = event::read()?
+            && key.kind == KeyEventKind::Press
+        {
+            match key.code {
+                KeyCode::Char('q') | KeyCode::Esc => app.quit(),
+                KeyCode::Down | KeyCode::Char('j') => {
+                    app.select_next();
+                    list_state.select(Some(app.selected));
                 }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    app.select_previous();
+                    list_state.select(Some(app.selected));
+                }
+                KeyCode::Enter => app.open_selected(),
+                KeyCode::Char('r') => app.request_reload(),
+                _ => {}
             }
         }
     }

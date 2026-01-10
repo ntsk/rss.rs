@@ -10,12 +10,8 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    Add {
-        url: String,
-    },
-    Delete {
-        url: String,
-    },
+    Add { url: String },
+    Delete { url: String },
     List,
 }
 
