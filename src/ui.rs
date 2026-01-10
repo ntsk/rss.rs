@@ -102,7 +102,7 @@ fn draw_ui(frame: &mut Frame, app: &App, list_state: &mut ListState) {
             let line1 = Line::from(format!("{} {}", date, a.title));
             let line2 = Line::from(vec![Span::styled(
                 format!("      [{}]", a.feed_title),
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(Color::Gray),
             )]);
             ListItem::new(Text::from(vec![line1, line2]))
         })
