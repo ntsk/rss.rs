@@ -2,6 +2,13 @@
 name = "rss"
 version = "0.1.0"
 edition = "2024"
+authors = ["ntsk"]
+description = "A terminal-based RSS/Atom feed reader with TUI"
+license = "MIT"
+repository = "https://github.com/ntsk/rss.rs"
+keywords = ["rss", "atom", "feed", "reader", "cli", "tui"]
+categories = ["command-line-utilities"]
+readme = "README.md"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
