@@ -83,7 +83,7 @@ mod tests {
         let config_path = dir.path().join("feeds.json");
 
         let mut manager = SubscriptionManager::new(&config_path).unwrap();
-        manager.add("https://example.com/feed.xml").unwrap();
+        manager.add("https://example.com/feed.xml", None).unwrap();
 
         let feeds = manager.list();
         assert_eq!(feeds.len(), 1);
@@ -96,9 +96,9 @@ mod tests {
         let config_path = dir.path().join("feeds.json");
 
         let mut manager = SubscriptionManager::new(&config_path).unwrap();
-        manager.add("https://example.com/feed.xml").unwrap();
+        manager.add("https://example.com/feed.xml", None).unwrap();
 
-        let result = manager.add("https://example.com/feed.xml");
+        let result = manager.add("https://example.com/feed.xml", None);
         assert!(result.is_err());
     }
 
@@ -108,7 +108,7 @@ mod tests {
         let config_path = dir.path().join("feeds.json");
 
         let mut manager = SubscriptionManager::new(&config_path).unwrap();
-        manager.add("https://example.com/feed.xml").unwrap();
+        manager.add("https://example.com/feed.xml", None).unwrap();
 
         let deleted = manager.delete("https://example.com/feed.xml").unwrap();
 
@@ -135,8 +135,8 @@ mod tests {
 
         {
             let mut manager = SubscriptionManager::new(&config_path).unwrap();
-            manager.add("https://example.com/feed1.xml").unwrap();
-            manager.add("https://example.com/feed2.xml").unwrap();
+            manager.add("https://example.com/feed1.xml", None).unwrap();
+            manager.add("https://example.com/feed2.xml", None).unwrap();
         }
 
         let manager = SubscriptionManager::new(&config_path).unwrap();
@@ -151,12 +151,43 @@ mod tests {
         let config_path = dir.path().join("feeds.json");
 
         let mut manager = SubscriptionManager::new(&config_path).unwrap();
-        manager.add("https://example.com/feed1.xml").unwrap();
-        manager.add("https://example.com/feed2.xml").unwrap();
-        manager.add("https://example.com/feed3.xml").unwrap();
+        manager.add("https://example.com/feed1.xml", None).unwrap();
+        manager.add("https://example.com/feed2.xml", None).unwrap();
+        manager.add("https://example.com/feed3.xml", None).unwrap();
 
         let feeds = manager.list();
 
         assert_eq!(feeds.len(), 3);
+    }
+
+    #[test]
+    fn test_add_feed_with_title() {
+        let dir = tempdir().unwrap();
+        let config_path = dir.path().join("feeds.json");
+
+        let mut manager = SubscriptionManager::new(&config_path).unwrap();
+        manager
+            .add("https://example.com/feed.xml", Some("My Blog".to_string()))
+            .unwrap();
+
+        let feeds = manager.list();
+        assert_eq!(feeds[0].title, Some("My Blog".to_string()));
+    }
+
+    #[test]
+    fn test_add_feed_title_persists() {
+        let dir = tempdir().unwrap();
+        let config_path = dir.path().join("feeds.json");
+
+        {
+            let mut manager = SubscriptionManager::new(&config_path).unwrap();
+            manager
+                .add("https://example.com/feed.xml", Some("My Blog".to_string()))
+                .unwrap();
+        }
+
+        let manager = SubscriptionManager::new(&config_path).unwrap();
+        let feeds = manager.list();
+        assert_eq!(feeds[0].title, Some("My Blog".to_string()));
     }
 }
