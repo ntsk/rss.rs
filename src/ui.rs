@@ -98,8 +98,13 @@ fn draw_ui(frame: &mut Frame, app: &App, list_state: &mut ListState) {
             let date = a
                 .published
                 .map(|d| d.format("%m/%d").to_string())
-                .unwrap_or_default();
-            ListItem::new(format!("{} [{}] {}", date, a.feed_title, a.title))
+                .unwrap_or_else(|| "     ".to_string());
+            let line1 = Line::from(format!("{} {}", date, a.title));
+            let line2 = Line::from(vec![Span::styled(
+                format!("      [{}]", a.feed_title),
+                Style::default().fg(Color::DarkGray),
+            )]);
+            ListItem::new(Text::from(vec![line1, line2]))
         })
         .collect();
 
