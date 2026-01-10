@@ -1,5 +1,6 @@
-use anyhow::Result;
+use anyhow::{bail, Result};
 use serde::{Deserialize, Serialize};
+use std::fs;
 use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -15,19 +16,49 @@ pub struct SubscriptionManager {
 
 impl SubscriptionManager {
     pub fn new(config_path: impl AsRef<Path>) -> Result<Self> {
-        todo!()
+        let config_path = config_path.as_ref().to_path_buf();
+        let feeds = if config_path.exists() {
+            let content = fs::read_to_string(&config_path)?;
+            serde_json::from_str(&content)?
+        } else {
+            Vec::new()
+        };
+
+        Ok(Self { feeds, config_path })
     }
 
     pub fn add(&mut self, url: &str) -> Result<()> {
-        todo!()
+        if self.feeds.iter().any(|f| f.url == url) {
+            bail!("Feed already exists: {}", url);
+        }
+
+        self.feeds.push(Feed {
+            url: url.to_string(),
+            title: None,
+        });
+        self.save()
     }
 
     pub fn delete(&mut self, url: &str) -> Result<bool> {
-        todo!()
+        let original_len = self.feeds.len();
+        self.feeds.retain(|f| f.url != url);
+
+        if self.feeds.len() != original_len {
+            self.save()?;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 
     pub fn list(&self) -> &[Feed] {
-        todo!()
+        &self.feeds
+    }
+
+    fn save(&self) -> Result<()> {
+        let content = serde_json::to_string_pretty(&self.feeds)?;
+        fs::write(&self.config_path, content)?;
+        Ok(())
     }
 }
 
