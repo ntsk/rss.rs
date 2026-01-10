@@ -1,4 +1,4 @@
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use chrono::{DateTime, Utc};
 use std::time::Duration;
 
@@ -30,8 +30,14 @@ fn create_client() -> Result<reqwest::blocking::Client> {
 
 pub fn fetch_articles(url: &str) -> Result<Vec<Article>> {
     let client = create_client()?;
-    let content = client.get(url).send()?.text()?;
-    parse_rss(&content, url)
+    let response = client
+        .get(url)
+        .send()
+        .with_context(|| format!("Failed to connect to {}", url))?;
+    let content = response
+        .text()
+        .with_context(|| format!("Failed to read response from {}", url))?;
+    parse_rss(&content, url).with_context(|| format!("Failed to parse feed from {}", url))
 }
 
 pub fn parse_rss(content: &str, _feed_url: &str) -> Result<Vec<Article>> {

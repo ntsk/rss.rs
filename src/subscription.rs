@@ -1,4 +1,4 @@
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
@@ -18,8 +18,10 @@ impl SubscriptionManager {
     pub fn new(config_path: impl AsRef<Path>) -> Result<Self> {
         let config_path = config_path.as_ref().to_path_buf();
         let feeds = if config_path.exists() {
-            let content = fs::read_to_string(&config_path)?;
-            serde_json::from_str(&content)?
+            let content = fs::read_to_string(&config_path)
+                .with_context(|| format!("Failed to read config file: {:?}", config_path))?;
+            serde_json::from_str(&content)
+                .with_context(|| format!("Failed to parse config file: {:?}", config_path))?
         } else {
             Vec::new()
         };
@@ -56,8 +58,10 @@ impl SubscriptionManager {
     }
 
     fn save(&self) -> Result<()> {
-        let content = serde_json::to_string_pretty(&self.feeds)?;
-        fs::write(&self.config_path, content)?;
+        let content = serde_json::to_string_pretty(&self.feeds)
+            .context("Failed to serialize feeds")?;
+        fs::write(&self.config_path, content)
+            .with_context(|| format!("Failed to save config file: {:?}", self.config_path))?;
         Ok(())
     }
 }
