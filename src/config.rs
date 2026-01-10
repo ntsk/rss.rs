@@ -1,12 +1,22 @@
 use anyhow::Result;
+use std::env;
 use std::path::PathBuf;
 
 pub fn get_config_path() -> Result<PathBuf> {
-    todo!()
+    let xdg_config_home = env::var("XDG_CONFIG_HOME").ok().map(PathBuf::from);
+    let path = get_config_path_with_xdg(xdg_config_home);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    Ok(path)
 }
 
-fn get_config_path_with_xdg(_xdg_config_home: Option<PathBuf>) -> PathBuf {
-    todo!()
+fn get_config_path_with_xdg(xdg_config_home: Option<PathBuf>) -> PathBuf {
+    let config_dir = xdg_config_home.unwrap_or_else(|| {
+        let home = env::var("HOME").expect("HOME environment variable not set");
+        PathBuf::from(home).join(".config")
+    });
+    config_dir.join("rss").join("feeds.json")
 }
 
 #[cfg(test)]

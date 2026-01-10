@@ -18,7 +18,7 @@ fn main() {
 
 fn run() -> Result<()> {
     let cli = Cli::parse();
-    let config_path = get_config_path()?;
+    let config_path = config::get_config_path()?;
     let mut manager = SubscriptionManager::new(&config_path)?;
 
     match cli.command {
@@ -51,13 +51,6 @@ fn run() -> Result<()> {
     Ok(())
 }
 
-fn get_config_path() -> Result<std::path::PathBuf> {
-    let config_dir = dirs::config_dir()
-        .ok_or_else(|| anyhow::anyhow!("Could not find config directory"))?
-        .join("rss");
-    std::fs::create_dir_all(&config_dir)?;
-    Ok(config_dir.join("feeds.json"))
-}
 
 fn show_articles(manager: &SubscriptionManager) -> Result<()> {
     let feeds = manager.list();
