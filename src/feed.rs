@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{bail, Result};
 use chrono::{DateTime, Utc};
 
 #[derive(Debug, Clone)]
@@ -10,11 +10,90 @@ pub struct Article {
 }
 
 pub fn fetch_articles(url: &str) -> Result<Vec<Article>> {
-    todo!()
+    let content = reqwest::blocking::get(url)?.text()?;
+    parse_rss(&content, url)
 }
 
-pub fn parse_rss(content: &str, feed_url: &str) -> Result<Vec<Article>> {
-    todo!()
+pub fn parse_rss(content: &str, _feed_url: &str) -> Result<Vec<Article>> {
+    if let Ok(channel) = content.parse::<rss::Channel>() {
+        return parse_rss_channel(&channel);
+    }
+
+    if let Ok(feed) = content.parse::<atom_syndication::Feed>() {
+        return parse_atom_feed(&feed);
+    }
+
+    bail!("Failed to parse feed: unsupported format or invalid XML")
+}
+
+fn parse_rss_channel(channel: &rss::Channel) -> Result<Vec<Article>> {
+    let feed_title = channel.title().to_string();
+    let articles = channel
+        .items()
+        .iter()
+        .filter_map(|item| {
+            let title = item.title()?.to_string();
+            let link = item.link()?.to_string();
+            let published = item.pub_date().and_then(|d| parse_date(d));
+
+            Some(Article {
+                title,
+                link,
+                published,
+                feed_title: feed_title.clone(),
+            })
+        })
+        .collect();
+
+    Ok(articles)
+}
+
+fn parse_date(date_str: &str) -> Option<DateTime<Utc>> {
+    if let Ok(dt) = DateTime::parse_from_rfc2822(date_str) {
+        return Some(dt.with_timezone(&Utc));
+    }
+
+    if let Ok(dt) = DateTime::parse_from_rfc3339(date_str) {
+        return Some(dt.with_timezone(&Utc));
+    }
+
+    let formats = [
+        "%a, %d %b %Y %H:%M:%S %z",
+        "%a, %d %b %Y %H:%M:%S %Z",
+        "%a, %-d %b %Y %H:%M:%S %z",
+        "%d %b %Y %H:%M:%S %z",
+        "%Y-%m-%dT%H:%M:%S%z",
+    ];
+
+    for fmt in formats {
+        if let Ok(dt) = DateTime::parse_from_str(date_str, fmt) {
+            return Some(dt.with_timezone(&Utc));
+        }
+    }
+
+    None
+}
+
+fn parse_atom_feed(feed: &atom_syndication::Feed) -> Result<Vec<Article>> {
+    let feed_title = feed.title().to_string();
+    let articles = feed
+        .entries()
+        .iter()
+        .filter_map(|entry| {
+            let title = entry.title().to_string();
+            let link = entry.links().first()?.href().to_string();
+            let published = entry.updated().with_timezone(&Utc);
+
+            Some(Article {
+                title,
+                link,
+                published: Some(published),
+                feed_title: feed_title.clone(),
+            })
+        })
+        .collect();
+
+    Ok(articles)
 }
 
 #[cfg(test)]
@@ -30,12 +109,12 @@ mod tests {
     <item>
       <title>First Post</title>
       <link>https://example.com/first</link>
-      <pubDate>Sat, 01 Jan 2025 12:00:00 +0000</pubDate>
+      <pubDate>Wed, 01 Jan 2025 12:00:00 +0000</pubDate>
     </item>
     <item>
       <title>Second Post</title>
       <link>https://example.com/second</link>
-      <pubDate>Sun, 02 Jan 2025 12:00:00 +0000</pubDate>
+      <pubDate>Thu, 02 Jan 2025 12:00:00 +0000</pubDate>
     </item>
   </channel>
 </rss>"#;
