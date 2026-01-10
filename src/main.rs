@@ -10,8 +10,15 @@ use clap::Parser;
 use cli::{Cli, Commands};
 use rayon::prelude::*;
 use subscription::SubscriptionManager;
+use tracing::{debug, info, warn};
+use tracing_subscriber::EnvFilter;
 
 fn main() {
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::from_default_env())
+        .with_writer(std::io::stderr)
+        .init();
+
     if let Err(e) = run() {
         eprintln!("Error: {}", e);
         std::process::exit(1);
@@ -21,18 +28,22 @@ fn main() {
 fn run() -> Result<()> {
     let cli = Cli::parse();
     let config_path = config::get_config_path()?;
+    debug!("Config path: {:?}", config_path);
     let mut manager = SubscriptionManager::new(&config_path)?;
 
     match cli.command {
         Some(Commands::Add { url }) => {
+            info!("Adding feed: {}", url);
             print!("Fetching feed... ");
             let title = match feed::fetch_articles(&url) {
                 Ok(articles) => {
                     println!("OK");
+                    debug!("Fetched {} articles", articles.len());
                     articles.first().map(|a| a.feed_title.clone())
                 }
                 Err(e) => {
                     println!("Warning: {}", e);
+                    warn!("Failed to fetch feed: {}", e);
                     None
                 }
             };
@@ -43,6 +54,7 @@ fn run() -> Result<()> {
             }
         }
         Some(Commands::Delete { url }) => {
+            info!("Deleting feed: {}", url);
             if manager.delete(&url)? {
                 println!("Deleted: {}", url);
             } else {
@@ -92,6 +104,7 @@ fn show_articles(manager: &SubscriptionManager) -> Result<()> {
         return Ok(());
     }
 
+    info!("Fetching {} feed(s)", feeds.len());
     let settings = config::Settings::load()?;
 
     let results: Vec<_> = feeds
@@ -102,10 +115,18 @@ fn show_articles(manager: &SubscriptionManager) -> Result<()> {
     let mut articles: Vec<feed::Article> = Vec::new();
     for (url, result) in results {
         match result {
-            Ok(mut fetched) => articles.append(&mut fetched),
-            Err(e) => eprintln!("Failed to fetch {}: {}", url, e),
+            Ok(mut fetched) => {
+                debug!("Fetched {} articles from {}", fetched.len(), url);
+                articles.append(&mut fetched);
+            }
+            Err(e) => {
+                warn!("Failed to fetch {}: {}", url, e);
+                eprintln!("Failed to fetch {}: {}", url, e);
+            }
         }
     }
+
+    info!("Total {} articles", articles.len());
 
     if articles.is_empty() {
         println!("No articles found.");

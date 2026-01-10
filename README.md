@@ -92,6 +92,15 @@ Create `~/.config/rss/config.toml` to customize:
 refresh_interval_secs = 600
 ```
 
+## Logging
+
+Enable debug logging with the `RUST_LOG` environment variable:
+
+```bash
+RUST_LOG=debug rss
+RUST_LOG=rss=debug rss
+```
+
 ## License
 
 MIT
