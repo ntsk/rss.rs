@@ -11,7 +11,8 @@ reqwest = { version = "0.12", features = ["blocking"] }
 rss = "2"
 atom_syndication = "0.12"
 open = "5"
-dialoguer = "0.11"
+ratatui = "0.29"
+crossterm = "0.28"
 chrono = { version = "0.4", features = ["serde"] }
 anyhow = "1"
 

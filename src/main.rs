@@ -2,11 +2,11 @@ mod cli;
 mod config;
 mod feed;
 mod subscription;
+mod ui;
 
 use anyhow::Result;
 use clap::Parser;
 use cli::{Cli, Commands};
-use dialoguer::{theme::ColorfulTheme, Select};
 use subscription::SubscriptionManager;
 
 fn main() {
@@ -74,20 +74,7 @@ fn show_articles(manager: &SubscriptionManager) -> Result<()> {
 
     articles.sort_by(|a, b| b.published.cmp(&a.published));
 
-    let items: Vec<String> = articles
-        .iter()
-        .map(|a| format!("[{}] {}", a.feed_title, a.title))
-        .collect();
-
-    let selection = Select::with_theme(&ColorfulTheme::default())
-        .with_prompt("Select an article to open")
-        .items(&items)
-        .default(0)
-        .interact_opt()?;
-
-    if let Some(index) = selection {
-        open::that(&articles[index].link)?;
-    }
+    ui::run_app(articles)?;
 
     Ok(())
 }
