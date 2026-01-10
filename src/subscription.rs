@@ -58,8 +58,8 @@ impl SubscriptionManager {
     }
 
     fn save(&self) -> Result<()> {
-        let content = serde_json::to_string_pretty(&self.feeds)
-            .context("Failed to serialize feeds")?;
+        let content =
+            serde_json::to_string_pretty(&self.feeds).context("Failed to serialize feeds")?;
         fs::write(&self.config_path, content)
             .with_context(|| format!("Failed to save config file: {:?}", self.config_path))?;
         Ok(())

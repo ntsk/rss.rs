@@ -1,3 +1,4 @@
+use crate::config::Settings;
 use crate::feed::{self, Article};
 use crate::subscription::SubscriptionManager;
 use anyhow::Result;
@@ -13,17 +14,17 @@ use ratatui::{
 use std::io::{self, stdout};
 use std::time::{Duration, Instant};
 
-const REFRESH_INTERVAL_SECS: u64 = 300;
 const TICK_RATE_MS: u64 = 250;
 
-pub fn run_app(articles: Vec<Article>) -> Result<()> {
+pub fn run_app(articles: Vec<Article>, settings: &Settings) -> Result<()> {
     enable_raw_mode()?;
     execute!(stdout(), EnterAlternateScreen)?;
 
     let backend = CrosstermBackend::new(stdout());
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = App::new(articles, Duration::from_secs(REFRESH_INTERVAL_SECS));
+    let refresh_interval = Duration::from_secs(settings.refresh_interval_secs);
+    let mut app = App::new(articles, refresh_interval);
     let mut list_state = ListState::default();
     list_state.select(Some(0));
 

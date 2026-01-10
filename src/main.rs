@@ -75,6 +75,8 @@ fn show_articles(manager: &SubscriptionManager) -> Result<()> {
         return Ok(());
     }
 
+    let settings = config::Settings::load()?;
+
     let mut articles: Vec<feed::Article> = Vec::new();
     for f in feeds {
         match feed::fetch_articles(&f.url) {
@@ -90,7 +92,7 @@ fn show_articles(manager: &SubscriptionManager) -> Result<()> {
 
     articles.sort_by(|a, b| b.published.cmp(&a.published));
 
-    ui::run_app(articles)?;
+    ui::run_app(articles, &settings)?;
 
     Ok(())
 }

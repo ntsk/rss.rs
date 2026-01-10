@@ -63,7 +63,21 @@ rss list
 
 ## Configuration
 
-Feeds are stored in `~/.config/rss/feeds.json` (or `$XDG_CONFIG_HOME/rss/feeds.json`).
+Configuration files are stored in `~/.config/rss/` (or `$XDG_CONFIG_HOME/rss/`).
+
+### Files
+
+- `feeds.json` - Feed subscriptions
+- `config.toml` - Application settings (optional)
+
+### Settings
+
+Create `~/.config/rss/config.toml` to customize:
+
+```toml
+# Auto-refresh interval in seconds (default: 300)
+refresh_interval_secs = 600
+```
 
 ## License
 
