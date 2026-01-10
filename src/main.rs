@@ -8,6 +8,7 @@ mod ui;
 use anyhow::Result;
 use clap::Parser;
 use cli::{Cli, Commands};
+use rayon::prelude::*;
 use subscription::SubscriptionManager;
 
 fn main() {
@@ -93,11 +94,16 @@ fn show_articles(manager: &SubscriptionManager) -> Result<()> {
 
     let settings = config::Settings::load()?;
 
+    let results: Vec<_> = feeds
+        .par_iter()
+        .map(|f| (f.url.clone(), feed::fetch_articles(&f.url)))
+        .collect();
+
     let mut articles: Vec<feed::Article> = Vec::new();
-    for f in feeds {
-        match feed::fetch_articles(&f.url) {
+    for (url, result) in results {
+        match result {
             Ok(mut fetched) => articles.append(&mut fetched),
-            Err(e) => eprintln!("Failed to fetch {}: {}", f.url, e),
+            Err(e) => eprintln!("Failed to fetch {}: {}", url, e),
         }
     }
 

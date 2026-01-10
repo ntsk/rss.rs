@@ -11,6 +11,7 @@ use ratatui::{
     prelude::*,
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
 };
+use rayon::prelude::*;
 use std::io::{self, stdout};
 use std::time::{Duration, Instant};
 
@@ -126,13 +127,13 @@ fn fetch_all_articles() -> Option<Vec<Article>> {
     let manager = SubscriptionManager::new(&config_path).ok()?;
     let feeds = manager.list();
 
-    let mut articles = Vec::new();
-    for f in feeds {
-        if let Ok(mut fetched) = feed::fetch_articles(&f.url) {
-            articles.append(&mut fetched);
-        }
-    }
+    let results: Vec<_> = feeds
+        .par_iter()
+        .filter_map(|f| feed::fetch_articles(&f.url).ok())
+        .flatten()
+        .collect();
 
+    let mut articles = results;
     articles.sort_by(|a, b| b.published.cmp(&a.published));
     Some(articles)
 }

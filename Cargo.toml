@@ -24,6 +24,7 @@ chrono = { version = "0.4", features = ["serde"] }
 anyhow = "1"
 toml = "0.8"
 quick-xml = "0.37"
+rayon = "1.10"
 
 [dev-dependencies]
 tempfile = "3"
