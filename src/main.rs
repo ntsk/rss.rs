@@ -1,3 +1,4 @@
+mod feed;
 mod subscription;
 
 fn main() {
