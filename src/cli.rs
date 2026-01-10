@@ -8,11 +8,15 @@ pub struct Cli {
     pub command: Option<Commands>,
 }
 
+use std::path::PathBuf;
+
 #[derive(Subcommand)]
 pub enum Commands {
     Add { url: String },
     Delete { url: String },
     List,
+    Import { file: PathBuf },
+    Export { file: PathBuf },
 }
 
 #[cfg(test)]

@@ -6,9 +6,10 @@ A terminal-based RSS/Atom feed reader with TUI.
 
 - RSS 2.0 and Atom feed support
 - Terminal UI with keyboard navigation
-- Auto-refresh every 5 minutes
+- Auto-refresh (configurable interval)
 - Manual refresh with `r` key
 - Open articles in default browser
+- OPML import/export
 - XDG Base Directory compliant config storage
 
 ## Installation
@@ -49,6 +50,18 @@ rss delete https://example.com/feed.xml
 
 ```bash
 rss list
+```
+
+### Import feeds from OPML
+
+```bash
+rss import feeds.opml
+```
+
+### Export feeds to OPML
+
+```bash
+rss export feeds.opml
 ```
 
 ## Keyboard Shortcuts

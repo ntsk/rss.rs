@@ -1,6 +1,7 @@
 mod cli;
 mod config;
 mod feed;
+mod opml;
 mod subscription;
 mod ui;
 
@@ -59,6 +60,21 @@ fn run() -> Result<()> {
                     }
                 }
             }
+        }
+        Some(Commands::Import { file }) => {
+            let feeds = opml::import(&file)?;
+            let mut imported = 0;
+            for feed in feeds {
+                if manager.add(&feed.url, feed.title).is_ok() {
+                    imported += 1;
+                }
+            }
+            println!("Imported {} feed(s)", imported);
+        }
+        Some(Commands::Export { file }) => {
+            let feeds = manager.list();
+            opml::export(&file, feeds)?;
+            println!("Exported {} feed(s) to {:?}", feeds.len(), file);
         }
         None => {
             show_articles(&manager)?;
