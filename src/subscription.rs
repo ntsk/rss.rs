@@ -27,14 +27,14 @@ impl SubscriptionManager {
         Ok(Self { feeds, config_path })
     }
 
-    pub fn add(&mut self, url: &str) -> Result<()> {
+    pub fn add(&mut self, url: &str, title: Option<String>) -> Result<()> {
         if self.feeds.iter().any(|f| f.url == url) {
             bail!("Feed already exists: {}", url);
         }
 
         self.feeds.push(Feed {
             url: url.to_string(),
-            title: None,
+            title,
         });
         self.save()
     }

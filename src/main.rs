@@ -23,8 +23,22 @@ fn run() -> Result<()> {
 
     match cli.command {
         Some(Commands::Add { url }) => {
-            manager.add(&url)?;
-            println!("Added: {}", url);
+            print!("Fetching feed... ");
+            let title = match feed::fetch_articles(&url) {
+                Ok(articles) => {
+                    println!("OK");
+                    articles.first().map(|a| a.feed_title.clone())
+                }
+                Err(e) => {
+                    println!("Warning: {}", e);
+                    None
+                }
+            };
+            manager.add(&url, title.clone())?;
+            match title {
+                Some(t) => println!("Added: {} ({})", t, url),
+                None => println!("Added: {}", url),
+            }
         }
         Some(Commands::Delete { url }) => {
             if manager.delete(&url)? {
@@ -39,7 +53,10 @@ fn run() -> Result<()> {
                 println!("No subscriptions yet. Use 'rss add <url>' to add a feed.");
             } else {
                 for feed in feeds {
-                    println!("{}", feed.url);
+                    match &feed.title {
+                        Some(title) => println!("{} ({})", title, feed.url),
+                        None => println!("{}", feed.url),
+                    }
                 }
             }
         }
