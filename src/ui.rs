@@ -1,11 +1,135 @@
-use crate::feed::Article;
+use crate::feed::{self, Article};
+use crate::subscription::SubscriptionManager;
 use anyhow::Result;
+use crossterm::{
+    event::{self, Event, KeyCode, KeyEventKind},
+    execute,
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+};
+use ratatui::{
+    prelude::*,
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
+};
+use std::io::{self, stdout};
 use std::time::{Duration, Instant};
 
 const REFRESH_INTERVAL_SECS: u64 = 300;
+const TICK_RATE_MS: u64 = 250;
 
-pub fn run_app(_articles: Vec<Article>) -> Result<()> {
-    todo!()
+pub fn run_app(articles: Vec<Article>) -> Result<()> {
+    enable_raw_mode()?;
+    execute!(stdout(), EnterAlternateScreen)?;
+
+    let backend = CrosstermBackend::new(stdout());
+    let mut terminal = Terminal::new(backend)?;
+
+    let mut app = App::new(articles, Duration::from_secs(REFRESH_INTERVAL_SECS));
+    let mut list_state = ListState::default();
+    list_state.select(Some(0));
+
+    let result = run_event_loop(&mut terminal, &mut app, &mut list_state);
+
+    disable_raw_mode()?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+
+    if let Some(article) = app.selected_article() {
+        if app.should_open {
+            open::that(&article.link)?;
+        }
+    }
+
+    result
+}
+
+fn run_event_loop(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    app: &mut App,
+    list_state: &mut ListState,
+) -> Result<()> {
+    let tick_rate = Duration::from_millis(TICK_RATE_MS);
+
+    loop {
+        terminal.draw(|frame| draw_ui(frame, app, list_state))?;
+
+        if app.should_quit || app.should_open {
+            break;
+        }
+
+        if app.should_auto_refresh() || app.should_reload {
+            if let Some(new_articles) = fetch_all_articles() {
+                app.update_articles(new_articles);
+            }
+        }
+
+        if event::poll(tick_rate)? {
+            if let Event::Key(key) = event::read()? {
+                if key.kind == KeyEventKind::Press {
+                    match key.code {
+                        KeyCode::Char('q') | KeyCode::Esc => app.quit(),
+                        KeyCode::Down | KeyCode::Char('j') => {
+                            app.select_next();
+                            list_state.select(Some(app.selected));
+                        }
+                        KeyCode::Up | KeyCode::Char('k') => {
+                            app.select_previous();
+                            list_state.select(Some(app.selected));
+                        }
+                        KeyCode::Enter => app.open_selected(),
+                        KeyCode::Char('r') => app.request_reload(),
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn draw_ui(frame: &mut Frame, app: &App, list_state: &mut ListState) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(0), Constraint::Length(3)])
+        .split(frame.area());
+
+    let items: Vec<ListItem> = app
+        .articles
+        .iter()
+        .map(|a| {
+            let date = a
+                .published
+                .map(|d| d.format("%m/%d").to_string())
+                .unwrap_or_default();
+            ListItem::new(format!("{} [{}] {}", date, a.feed_title, a.title))
+        })
+        .collect();
+
+    let list = List::new(items)
+        .block(Block::default().borders(Borders::ALL).title("Articles"))
+        .highlight_style(Style::default().add_modifier(Modifier::REVERSED))
+        .highlight_symbol("> ");
+
+    frame.render_stateful_widget(list, chunks[0], list_state);
+
+    let help = Paragraph::new("↑/↓: Navigate | Enter: Open | r: Reload | q: Quit")
+        .block(Block::default().borders(Borders::ALL));
+    frame.render_widget(help, chunks[1]);
+}
+
+fn fetch_all_articles() -> Option<Vec<Article>> {
+    let config_path = crate::config::get_config_path().ok()?;
+    let manager = SubscriptionManager::new(&config_path).ok()?;
+    let feeds = manager.list();
+
+    let mut articles = Vec::new();
+    for f in feeds {
+        if let Ok(mut fetched) = feed::fetch_articles(&f.url) {
+            articles.append(&mut fetched);
+        }
+    }
+
+    articles.sort_by(|a, b| b.published.cmp(&a.published));
+    Some(articles)
 }
 
 pub struct App {
@@ -20,39 +144,56 @@ pub struct App {
 
 impl App {
     pub fn new(articles: Vec<Article>, refresh_interval: Duration) -> Self {
-        todo!()
+        Self {
+            articles,
+            selected: 0,
+            should_quit: false,
+            should_open: false,
+            should_reload: false,
+            last_refresh: Instant::now(),
+            refresh_interval,
+        }
     }
 
     pub fn select_next(&mut self) {
-        todo!()
+        if !self.articles.is_empty() && self.selected < self.articles.len() - 1 {
+            self.selected += 1;
+        }
     }
 
     pub fn select_previous(&mut self) {
-        todo!()
+        if self.selected > 0 {
+            self.selected -= 1;
+        }
     }
 
     pub fn open_selected(&mut self) {
-        todo!()
+        self.should_open = true;
     }
 
     pub fn quit(&mut self) {
-        todo!()
+        self.should_quit = true;
     }
 
     pub fn request_reload(&mut self) {
-        todo!()
+        self.should_reload = true;
     }
 
     pub fn should_auto_refresh(&self) -> bool {
-        todo!()
+        self.last_refresh.elapsed() >= self.refresh_interval
     }
 
     pub fn update_articles(&mut self, articles: Vec<Article>) {
-        todo!()
+        self.articles = articles;
+        if !self.articles.is_empty() && self.selected >= self.articles.len() {
+            self.selected = self.articles.len() - 1;
+        }
+        self.last_refresh = Instant::now();
+        self.should_reload = false;
     }
 
     pub fn selected_article(&self) -> Option<&Article> {
-        todo!()
+        self.articles.get(self.selected)
     }
 }
 
