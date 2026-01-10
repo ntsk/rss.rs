@@ -34,12 +34,6 @@ pub fn run_app(articles: Vec<Article>, settings: &Settings) -> Result<()> {
     disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
 
-    if let Some(article) = app.selected_article()
-        && app.should_open
-    {
-        open::that(&article.link)?;
-    }
-
     result
 }
 
@@ -53,7 +47,7 @@ fn run_event_loop(
     loop {
         terminal.draw(|frame| draw_ui(frame, app, list_state))?;
 
-        if app.should_quit || app.should_open {
+        if app.should_quit {
             break;
         }
 
@@ -77,7 +71,11 @@ fn run_event_loop(
                     app.select_previous();
                     list_state.select(Some(app.selected));
                 }
-                KeyCode::Enter => app.open_selected(),
+                KeyCode::Enter => {
+                    if let Some(article) = app.selected_article() {
+                        let _ = open::that(&article.link);
+                    }
+                }
                 KeyCode::Char('r') => app.request_reload(),
                 _ => {}
             }
@@ -142,7 +140,6 @@ pub struct App {
     pub articles: Vec<Article>,
     pub selected: usize,
     pub should_quit: bool,
-    pub should_open: bool,
     pub should_reload: bool,
     pub last_refresh: Instant,
     pub refresh_interval: Duration,
@@ -154,7 +151,6 @@ impl App {
             articles,
             selected: 0,
             should_quit: false,
-            should_open: false,
             should_reload: false,
             last_refresh: Instant::now(),
             refresh_interval,
@@ -171,10 +167,6 @@ impl App {
         if self.selected > 0 {
             self.selected -= 1;
         }
-    }
-
-    pub fn open_selected(&mut self) {
-        self.should_open = true;
     }
 
     pub fn quit(&mut self) {
@@ -227,7 +219,6 @@ mod tests {
         assert_eq!(app.articles.len(), 3);
         assert_eq!(app.selected, 0);
         assert!(!app.should_quit);
-        assert!(!app.should_open);
     }
 
     #[test]
@@ -259,16 +250,6 @@ mod tests {
 
         app.select_previous();
         assert_eq!(app.selected, 0);
-    }
-
-    #[test]
-    fn test_open_selected() {
-        let articles = create_test_articles(3);
-        let mut app = App::new(articles, Duration::from_secs(300));
-
-        app.open_selected();
-
-        assert!(app.should_open);
     }
 
     #[test]
