@@ -1,5 +1,9 @@
 use anyhow::{Result, bail};
 use chrono::{DateTime, Utc};
+use std::time::Duration;
+
+const REQUEST_TIMEOUT_SECS: u64 = 30;
+const USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
 
 #[derive(Debug, Clone)]
 pub struct Article {
@@ -16,8 +20,17 @@ fn sanitize_text(text: impl AsRef<str>) -> String {
         .join(" ")
 }
 
+fn create_client() -> Result<reqwest::blocking::Client> {
+    reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
+        .user_agent(USER_AGENT)
+        .build()
+        .map_err(Into::into)
+}
+
 pub fn fetch_articles(url: &str) -> Result<Vec<Article>> {
-    let content = reqwest::blocking::get(url)?.text()?;
+    let client = create_client()?;
+    let content = client.get(url).send()?.text()?;
     parse_rss(&content, url)
 }
 
