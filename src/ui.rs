@@ -82,7 +82,10 @@ fn run_event_loop(
         {
             match app.input_mode {
                 InputMode::Normal => match key.code {
-                    KeyCode::Char('q') | KeyCode::Esc => app.quit(),
+                    KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        app.quit()
+                    }
+                    KeyCode::Char('q') => app.quit(),
                     KeyCode::Down | KeyCode::Char('j') => {
                         app.select_next();
                         list_state.select(Some(app.selected));
@@ -137,11 +140,10 @@ fn run_event_loop(
                         if key.modifiers.contains(KeyModifiers::CONTROL)
                             || key.modifiers.contains(KeyModifiers::SUPER) =>
                     {
-                        if let Ok(mut clipboard) = Clipboard::new()
-                            && let Ok(text) = clipboard.get_text()
-                        {
-                            app.input_buffer.push_str(&text);
-                        }
+                        paste_from_clipboard(app);
+                    }
+                    KeyCode::Char('p') => {
+                        paste_from_clipboard(app);
                     }
                     KeyCode::Char(c) => app.input_buffer.push(c),
                     KeyCode::Backspace => {
@@ -154,6 +156,14 @@ fn run_event_loop(
     }
 
     Ok(())
+}
+
+fn paste_from_clipboard(app: &mut App) {
+    if let Ok(mut clipboard) = Clipboard::new()
+        && let Ok(text) = clipboard.get_text()
+    {
+        app.input_buffer.push_str(&text);
+    }
 }
 
 fn get_manager(app: &mut App) -> Option<SubscriptionManager> {
