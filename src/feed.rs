@@ -61,14 +61,11 @@ fn parse_rss_channel(channel: &rss::Channel) -> Result<Vec<Article>> {
         .filter_map(|item| {
             let title = sanitize_text(item.title()?);
             let link = item.link()?.to_string();
-            let published = item
-                .pub_date()
-                .and_then(parse_date)
-                .or_else(|| {
-                    item.dublin_core_ext()
-                        .and_then(|dc| dc.dates().first())
-                        .and_then(|d| parse_date(d))
-                });
+            let published = item.pub_date().and_then(parse_date).or_else(|| {
+                item.dublin_core_ext()
+                    .and_then(|dc| dc.dates().first())
+                    .and_then(|d| parse_date(d))
+            });
 
             Some(Article {
                 title,
