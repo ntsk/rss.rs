@@ -521,7 +521,8 @@ fn draw_article_content(frame: &mut Frame, app: &App) {
 }
 
 fn draw_article_list(frame: &mut Frame, app: &App, list_state: &mut ListState) {
-    let help_text = "↑/↓: Navigate | Enter: View | o: Open | r: Reload | a: Add | l: List | q: Quit";
+    let help_text =
+        "↑/↓: Navigate | Enter: View | o: Open | r: Reload | a: Add | l: List | q: Quit";
     let available_width = frame.area().width.saturating_sub(4) as usize;
     let help_lines = if available_width > 0 {
         help_text.chars().count().div_ceil(available_width)
