@@ -89,21 +89,15 @@ fn run() -> Result<()> {
             opml::export(&file, feeds)?;
             println!("Exported {} feed(s) to {:?}", feeds.len(), file);
         }
-        Some(Commands::Config { list, key, value }) => {
+        Some(Commands::Config { key, value }) => {
             let mut settings = config::Settings::load()?;
-            if list {
-                println!("{}", settings.display());
-            } else if let (Some(k), Some(v)) = (key, value) {
+            if let (Some(k), Some(v)) = (key, value) {
                 let config_key: config::ConfigKey = k.parse()?;
                 settings.set(config_key, &v)?;
                 settings.save()?;
                 println!("Set {} = {}", config_key, v);
             } else {
-                println!("Usage: rss config --list");
-                println!("       rss config <key> <value>");
-                println!("\nAvailable settings:");
-                println!("  refresh_interval_secs  Auto-refresh interval in seconds");
-                println!("  auto_sort              Auto-sort feeds on add/delete (true/false)");
+                println!("{}", settings.display());
             }
         }
         None => {
