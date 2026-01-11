@@ -112,20 +112,14 @@ pub fn fetch_article_content(url: &str, width: usize) -> Result<String> {
         .text()
         .with_context(|| format!("Failed to read response from {}", url))?;
 
-    let full_text = html2text::from_read(html.as_bytes(), width);
-
+    let mut content_html = html.clone();
     if let Ok(parsed_url) = url.parse::<reqwest::Url>()
         && let Ok(extracted) = readability::extractor::extract(&mut html.as_bytes(), &parsed_url)
     {
-        let extracted_text = html2text::from_read(extracted.content.as_bytes(), width);
-        let extracted_len = extracted_text.trim().len();
-        let full_len = full_text.trim().len();
-        if extracted_len >= 500 || (extracted_len >= 200 && extracted_len * 10 >= full_len) {
-            return Ok(extracted_text);
-        }
+        content_html = extracted.content;
     }
 
-    Ok(full_text)
+    Ok(html2text::from_read(content_html.as_bytes(), width))
 }
 
 pub fn parse_feed(content: &str) -> Result<Vec<Article>> {
