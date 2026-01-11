@@ -130,27 +130,35 @@ fn resolve_article_url(
     url: &str,
     html: &str,
 ) -> Result<(String, String)> {
-    if url.contains("news.yahoo.co.jp/pickup/")
-        && let Some(article_url) = extract_yahoo_article_url(html)
+    if let Some(canonical_url) = extract_canonical_url(html)
+        && canonical_url != url
     {
         let response = client
-            .get(&article_url)
+            .get(&canonical_url)
             .send()
-            .with_context(|| format!("Failed to connect to {}", article_url))?;
-        let article_html = response
+            .with_context(|| format!("Failed to connect to {}", canonical_url))?;
+        let canonical_html = response
             .text()
-            .with_context(|| format!("Failed to read response from {}", article_url))?;
-        return Ok((article_url, article_html));
+            .with_context(|| format!("Failed to read response from {}", canonical_url))?;
+        return Ok((canonical_url, canonical_html));
     }
     Ok((url.to_string(), html.to_string()))
 }
 
-fn extract_yahoo_article_url(html: &str) -> Option<String> {
-    let pattern = "https://news.yahoo.co.jp/articles/";
-    if let Some(start) = html.find(pattern) {
-        let rest = &html[start..];
+fn extract_canonical_url(html: &str) -> Option<String> {
+    let lower = html.to_lowercase();
+    let canonical_pos = lower.find("rel=\"canonical\"")?;
+    let search_start = canonical_pos.saturating_sub(200);
+    let search_area = &html[search_start..canonical_pos + 50];
+
+    if let Some(href_pos) = search_area.to_lowercase().find("href=\"") {
+        let href_start = search_start + href_pos + 6;
+        let rest = &html[href_start..];
         if let Some(end) = rest.find('"') {
-            return Some(rest[..end].to_string());
+            let url = rest[..end].to_string();
+            if url.starts_with("http") {
+                return Some(url);
+            }
         }
     }
     None
