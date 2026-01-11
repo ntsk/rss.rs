@@ -99,10 +99,10 @@ pub fn fetch_articles(url: &str) -> Result<Vec<Article>> {
     let content = response
         .text()
         .with_context(|| format!("Failed to read response from {}", url))?;
-    parse_rss(&content, url).with_context(|| format!("Failed to parse feed from {}", url))
+    parse_feed(&content).with_context(|| format!("Failed to parse feed from {}", url))
 }
 
-pub fn parse_rss(content: &str, _feed_url: &str) -> Result<Vec<Article>> {
+pub fn parse_feed(content: &str) -> Result<Vec<Article>> {
     if let Ok(channel) = content.parse::<rss::Channel>() {
         return parse_rss_channel(&channel);
     }
@@ -236,14 +236,14 @@ mod tests {
 
     #[test]
     fn test_parse_rss_returns_articles() {
-        let articles = parse_rss(SAMPLE_RSS, "https://example.com/feed.xml").unwrap();
+        let articles = parse_feed(SAMPLE_RSS).unwrap();
 
         assert_eq!(articles.len(), 2);
     }
 
     #[test]
     fn test_parse_rss_article_has_title() {
-        let articles = parse_rss(SAMPLE_RSS, "https://example.com/feed.xml").unwrap();
+        let articles = parse_feed(SAMPLE_RSS).unwrap();
 
         assert_eq!(articles[0].title, "First Post");
         assert_eq!(articles[1].title, "Second Post");
@@ -251,28 +251,28 @@ mod tests {
 
     #[test]
     fn test_parse_rss_article_has_link() {
-        let articles = parse_rss(SAMPLE_RSS, "https://example.com/feed.xml").unwrap();
+        let articles = parse_feed(SAMPLE_RSS).unwrap();
 
         assert_eq!(articles[0].link, "https://example.com/first");
     }
 
     #[test]
     fn test_parse_rss_article_has_published_date() {
-        let articles = parse_rss(SAMPLE_RSS, "https://example.com/feed.xml").unwrap();
+        let articles = parse_feed(SAMPLE_RSS).unwrap();
 
         assert!(articles[0].published.is_some());
     }
 
     #[test]
     fn test_parse_rss_article_has_feed_title() {
-        let articles = parse_rss(SAMPLE_RSS, "https://example.com/feed.xml").unwrap();
+        let articles = parse_feed(SAMPLE_RSS).unwrap();
 
         assert_eq!(articles[0].feed_title, "Sample Blog");
     }
 
     #[test]
     fn test_parse_atom_returns_articles() {
-        let articles = parse_rss(SAMPLE_ATOM, "https://example.com/atom.xml").unwrap();
+        let articles = parse_feed(SAMPLE_ATOM).unwrap();
 
         assert_eq!(articles.len(), 1);
         assert_eq!(articles[0].title, "Atom Entry");
@@ -280,7 +280,7 @@ mod tests {
 
     #[test]
     fn test_parse_invalid_feed_returns_error() {
-        let result = parse_rss("invalid xml", "https://example.com/feed.xml");
+        let result = parse_feed("invalid xml");
 
         assert!(result.is_err());
     }
@@ -298,7 +298,7 @@ mod tests {
   </entry>
 </feed>"#;
 
-        let articles = parse_rss(atom_with_published, "https://example.com/atom.xml").unwrap();
+        let articles = parse_feed(atom_with_published).unwrap();
 
         assert_eq!(articles.len(), 1);
         let published = articles[0].published.unwrap();
@@ -317,7 +317,7 @@ mod tests {
   </entry>
 </feed>"#;
 
-        let articles = parse_rss(atom_without_published, "https://example.com/atom.xml").unwrap();
+        let articles = parse_feed(atom_without_published).unwrap();
 
         assert_eq!(articles.len(), 1);
         let published = articles[0].published.unwrap();
@@ -339,7 +339,7 @@ Post</title>
   </channel>
 </rss>"#;
 
-        let articles = parse_rss(rss_with_newlines, "https://example.com/feed.xml").unwrap();
+        let articles = parse_feed(rss_with_newlines).unwrap();
 
         assert_eq!(articles[0].feed_title, "Sample Blog");
         assert_eq!(articles[0].title, "First Post");
@@ -359,7 +359,7 @@ Entry</title>
   </entry>
 </feed>"#;
 
-        let articles = parse_rss(atom_with_newlines, "https://example.com/atom.xml").unwrap();
+        let articles = parse_feed(atom_with_newlines).unwrap();
 
         assert_eq!(articles[0].feed_title, "Sample Atom");
         assert_eq!(articles[0].title, "Atom Entry");
@@ -384,7 +384,7 @@ Entry</title>
 </item>
 </rdf:RDF>"#;
 
-        let articles = parse_rss(rss10, "https://example.com/rdf.rss").unwrap();
+        let articles = parse_feed(rss10).unwrap();
 
         assert_eq!(articles.len(), 1);
         assert_eq!(articles[0].title, "RDF Item");
@@ -419,7 +419,7 @@ Entry</title>
   </channel>
 </rss>"#;
 
-        let articles = parse_rss(rss_with_ampersands, "https://example.com/feed.xml").unwrap();
+        let articles = parse_feed(rss_with_ampersands).unwrap();
 
         assert_eq!(articles.len(), 1);
         assert_eq!(articles[0].title, "Test Item");

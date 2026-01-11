@@ -1,10 +1,39 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::env;
+use std::fmt;
 use std::fs;
 use std::path::PathBuf;
+use std::str::FromStr;
 
 const DEFAULT_REFRESH_INTERVAL: u64 = 300;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConfigKey {
+    RefreshIntervalSecs,
+    AutoSort,
+}
+
+impl FromStr for ConfigKey {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        match s {
+            "refresh_interval_secs" => Ok(ConfigKey::RefreshIntervalSecs),
+            "auto_sort" => Ok(ConfigKey::AutoSort),
+            _ => anyhow::bail!("Unknown setting: {}", s),
+        }
+    }
+}
+
+impl fmt::Display for ConfigKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ConfigKey::RefreshIntervalSecs => write!(f, "refresh_interval_secs"),
+            ConfigKey::AutoSort => write!(f, "auto_sort"),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
@@ -46,20 +75,17 @@ impl Settings {
         Ok(())
     }
 
-    pub fn set(&mut self, key: &str, value: &str) -> Result<()> {
+    pub fn set(&mut self, key: ConfigKey, value: &str) -> Result<()> {
         match key {
-            "refresh_interval_secs" => {
+            ConfigKey::RefreshIntervalSecs => {
                 self.refresh_interval_secs = value
                     .parse()
-                    .map_err(|_| anyhow::anyhow!("Invalid value for refresh_interval_secs"))?;
+                    .map_err(|_| anyhow::anyhow!("Invalid value for {}", key))?;
             }
-            "auto_sort" => {
+            ConfigKey::AutoSort => {
                 self.auto_sort = value
                     .parse()
-                    .map_err(|_| anyhow::anyhow!("Invalid value for auto_sort (use true/false)"))?;
-            }
-            _ => {
-                anyhow::bail!("Unknown setting: {}", key);
+                    .map_err(|_| anyhow::anyhow!("Invalid value for {} (use true/false)", key))?;
             }
         }
         Ok(())
@@ -135,27 +161,52 @@ mod tests {
     fn test_settings_set_valid_key() {
         let mut settings = Settings::default();
 
-        let result = settings.set("auto_sort", "true");
+        let result = settings.set(ConfigKey::AutoSort, "true");
 
         assert!(result.is_ok());
         assert!(settings.auto_sort);
     }
 
     #[test]
-    fn test_settings_set_invalid_key() {
+    fn test_settings_set_invalid_value() {
         let mut settings = Settings::default();
 
-        let result = settings.set("invalid_key", "value");
+        let result = settings.set(ConfigKey::AutoSort, "invalid");
 
         assert!(result.is_err());
     }
 
     #[test]
-    fn test_settings_set_invalid_value() {
-        let mut settings = Settings::default();
+    fn test_config_key_from_str_refresh_interval() {
+        let key: ConfigKey = "refresh_interval_secs".parse().unwrap();
 
-        let result = settings.set("auto_sort", "invalid");
+        assert!(matches!(key, ConfigKey::RefreshIntervalSecs));
+    }
+
+    #[test]
+    fn test_config_key_from_str_auto_sort() {
+        let key: ConfigKey = "auto_sort".parse().unwrap();
+
+        assert!(matches!(key, ConfigKey::AutoSort));
+    }
+
+    #[test]
+    fn test_config_key_from_str_invalid() {
+        let result: Result<ConfigKey, _> = "invalid_key".parse();
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_config_key_display_refresh_interval() {
+        assert_eq!(
+            ConfigKey::RefreshIntervalSecs.to_string(),
+            "refresh_interval_secs"
+        );
+    }
+
+    #[test]
+    fn test_config_key_display_auto_sort() {
+        assert_eq!(ConfigKey::AutoSort.to_string(), "auto_sort");
     }
 }
