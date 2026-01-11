@@ -94,6 +94,26 @@ fn run_event_loop(
                         app.select_previous();
                         list_state.select(Some(app.selected));
                     }
+                    KeyCode::Char('g') => {
+                        app.select_first();
+                        list_state.select(Some(app.selected));
+                    }
+                    KeyCode::Char('G') => {
+                        app.select_last();
+                        list_state.select(Some(app.selected));
+                    }
+                    KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        for _ in 0..10 {
+                            app.select_next();
+                        }
+                        list_state.select(Some(app.selected));
+                    }
+                    KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        for _ in 0..10 {
+                            app.select_previous();
+                        }
+                        list_state.select(Some(app.selected));
+                    }
                     KeyCode::Enter => {
                         if let Some(article) = app.selected_article() {
                             let link = article.link.clone();
@@ -125,9 +145,16 @@ fn run_event_loop(
                     _ => {}
                 },
                 InputMode::FeedList => match key.code {
-                    KeyCode::Esc => app.close_feed_list(),
+                    KeyCode::Esc | KeyCode::Char('h') => app.close_feed_list(),
                     KeyCode::Down | KeyCode::Char('j') => app.select_next_feed(),
                     KeyCode::Up | KeyCode::Char('k') => app.select_previous_feed(),
+                    KeyCode::Char('g') => app.select_first_feed(),
+                    KeyCode::Char('G') => app.select_last_feed(),
+                    KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        for _ in 0..10 {
+                            app.select_previous_feed();
+                        }
+                    }
                     KeyCode::Enter => {
                         if let Some(feed) = app.feeds.get(app.feed_selected)
                             && let Err(e) = open::that(&feed.url)
@@ -136,7 +163,14 @@ fn run_event_loop(
                         }
                     }
                     KeyCode::Char('a') => app.start_adding_feed(),
-                    KeyCode::Char('d') => delete_feed_and_refresh(app),
+                    KeyCode::Char('d') if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        delete_feed_and_refresh(app)
+                    }
+                    KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        for _ in 0..10 {
+                            app.select_next_feed();
+                        }
+                    }
                     KeyCode::Char('s') => sort_feeds(app),
                     _ => {}
                 },
@@ -170,7 +204,7 @@ fn run_event_loop(
                     _ => {}
                 },
                 InputMode::ViewingArticle => match key.code {
-                    KeyCode::Esc | KeyCode::Char('q') => {
+                    KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('h') => {
                         app.input_mode = InputMode::Normal;
                         app.article_content = None;
                         app.article_scroll = 0;
@@ -180,6 +214,24 @@ fn run_event_loop(
                     }
                     KeyCode::Up | KeyCode::Char('k') => {
                         app.article_scroll = app.article_scroll.saturating_sub(1);
+                    }
+                    KeyCode::Char('g') => {
+                        app.article_scroll = 0;
+                    }
+                    KeyCode::Char('G') => {
+                        app.article_scroll = usize::MAX;
+                    }
+                    KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        app.article_scroll = app.article_scroll.saturating_add(15);
+                    }
+                    KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        app.article_scroll = app.article_scroll.saturating_sub(15);
+                    }
+                    KeyCode::Char('f') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        app.article_scroll = app.article_scroll.saturating_add(30);
+                    }
+                    KeyCode::Char('b') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        app.article_scroll = app.article_scroll.saturating_sub(30);
                     }
                     KeyCode::Char('o') => {
                         if let Some(article) = app.selected_article()
@@ -562,6 +614,16 @@ impl App {
         }
     }
 
+    pub fn select_first(&mut self) {
+        self.selected = 0;
+    }
+
+    pub fn select_last(&mut self) {
+        if !self.articles.is_empty() {
+            self.selected = self.articles.len() - 1;
+        }
+    }
+
     pub fn quit(&mut self) {
         self.should_quit = true;
     }
@@ -622,6 +684,16 @@ impl App {
     pub fn select_previous_feed(&mut self) {
         if self.feed_selected > 0 {
             self.feed_selected -= 1;
+        }
+    }
+
+    pub fn select_first_feed(&mut self) {
+        self.feed_selected = 0;
+    }
+
+    pub fn select_last_feed(&mut self) {
+        if !self.feeds.is_empty() {
+            self.feed_selected = self.feeds.len() - 1;
         }
     }
 
