@@ -116,6 +116,8 @@ rss config refresh_interval_secs 600
 |-----|--------|
 | `↑` / `k` | Move up |
 | `↓` / `j` | Move down |
+| `Enter` | Open feed URL in browser |
+| `a` | Add new feed |
 | `d` | Delete selected feed |
 | `s` | Sort feeds |
 | `Esc` | Back to articles |
