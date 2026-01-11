@@ -103,6 +103,10 @@ rss config refresh_interval_secs 600
 |-----|--------|
 | `↑` / `k` | Move up |
 | `↓` / `j` | Move down |
+| `g` | Go to first item |
+| `G` | Go to last item |
+| `Ctrl+d` | Move down 10 items |
+| `Ctrl+u` | Move up 10 items |
 | `Enter` | View article content |
 | `o` | Open article in browser |
 | `r` | Reload feeds |
@@ -117,6 +121,12 @@ rss config refresh_interval_secs 600
 |-----|--------|
 | `↑` / `k` | Scroll up |
 | `↓` / `j` | Scroll down |
+| `g` | Scroll to top |
+| `G` | Scroll to bottom |
+| `Ctrl+d` | Scroll down half page |
+| `Ctrl+u` | Scroll up half page |
+| `Ctrl+f` | Scroll down full page |
+| `Ctrl+b` | Scroll up full page |
 | `o` | Open in browser |
 | `q` / `Esc` | Back to list |
 
@@ -126,6 +136,10 @@ rss config refresh_interval_secs 600
 |-----|--------|
 | `↑` / `k` | Move up |
 | `↓` / `j` | Move down |
+| `g` | Go to first feed |
+| `G` | Go to last feed |
+| `Ctrl+d` | Move down 10 feeds |
+| `Ctrl+u` | Move up 10 feeds |
 | `Enter` | Open feed URL in browser |
 | `a` | Add new feed |
 | `d` | Delete selected feed |
