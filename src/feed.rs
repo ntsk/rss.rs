@@ -112,14 +112,48 @@ pub fn fetch_article_content(url: &str, width: usize) -> Result<String> {
         .text()
         .with_context(|| format!("Failed to read response from {}", url))?;
 
-    let mut content_html = html.clone();
-    if let Ok(parsed_url) = url.parse::<reqwest::Url>()
-        && let Ok(extracted) = readability::extractor::extract(&mut html.as_bytes(), &parsed_url)
+    let (target_url, target_html) = resolve_article_url(&client, url, &html)?;
+
+    let mut content_html = target_html.clone();
+    if let Ok(parsed_url) = target_url.parse::<reqwest::Url>()
+        && let Ok(extracted) =
+            readability::extractor::extract(&mut target_html.as_bytes(), &parsed_url)
     {
         content_html = extracted.content;
     }
 
     Ok(html2text::from_read(content_html.as_bytes(), width))
+}
+
+fn resolve_article_url(
+    client: &reqwest::blocking::Client,
+    url: &str,
+    html: &str,
+) -> Result<(String, String)> {
+    if url.contains("news.yahoo.co.jp/pickup/")
+        && let Some(article_url) = extract_yahoo_article_url(html)
+    {
+        let response = client
+            .get(&article_url)
+            .send()
+            .with_context(|| format!("Failed to connect to {}", article_url))?;
+        let article_html = response
+            .text()
+            .with_context(|| format!("Failed to read response from {}", article_url))?;
+        return Ok((article_url, article_html));
+    }
+    Ok((url.to_string(), html.to_string()))
+}
+
+fn extract_yahoo_article_url(html: &str) -> Option<String> {
+    let pattern = "https://news.yahoo.co.jp/articles/";
+    if let Some(start) = html.find(pattern) {
+        let rest = &html[start..];
+        if let Some(end) = rest.find('"') {
+            return Some(rest[..end].to_string());
+        }
+    }
+    None
 }
 
 pub fn parse_feed(content: &str) -> Result<Vec<Article>> {
