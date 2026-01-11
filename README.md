@@ -87,7 +87,7 @@ rss export feeds.opml
 ### Show settings
 
 ```bash
-rss config --list
+rss config
 ```
 
 ### Change settings

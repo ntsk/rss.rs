@@ -26,8 +26,6 @@ pub enum Commands {
         file: PathBuf,
     },
     Config {
-        #[arg(short, long)]
-        list: bool,
         key: Option<String>,
         value: Option<String>,
     },
@@ -80,16 +78,15 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_config_list() {
-        let cli = Cli::parse_from(["rss", "config", "--list"]);
+    fn test_parse_config_no_args() {
+        let cli = Cli::parse_from(["rss", "config"]);
 
         match cli.command {
             Some(Commands::Config {
-                list: true,
                 key: None,
                 value: None,
             }) => {}
-            _ => panic!("Expected Config command with --list"),
+            _ => panic!("Expected Config command with no args"),
         }
     }
 
@@ -99,7 +96,6 @@ mod tests {
 
         match cli.command {
             Some(Commands::Config {
-                list: false,
                 key: Some(k),
                 value: Some(v),
             }) => {
