@@ -20,6 +20,67 @@ fn sanitize_text(text: impl AsRef<str>) -> String {
         .join(" ")
 }
 
+fn sanitize_xml(content: &str) -> String {
+    let mut result = String::with_capacity(content.len());
+    let chars: Vec<char> = content.chars().collect();
+    let mut i = 0;
+
+    while i < chars.len() {
+        if chars[i] == '&' {
+            if is_valid_entity(&chars, i) {
+                result.push('&');
+            } else {
+                result.push_str("&amp;");
+            }
+        } else {
+            result.push(chars[i]);
+        }
+        i += 1;
+    }
+
+    result
+}
+
+fn is_valid_entity(chars: &[char], start: usize) -> bool {
+    let remaining: String = chars[start..].iter().collect();
+
+    if remaining.starts_with("&amp;")
+        || remaining.starts_with("&lt;")
+        || remaining.starts_with("&gt;")
+        || remaining.starts_with("&quot;")
+        || remaining.starts_with("&apos;")
+    {
+        return true;
+    }
+
+    if let Some(hex_part) = remaining
+        .strip_prefix("&#x")
+        .or_else(|| remaining.strip_prefix("&#X"))
+    {
+        for (j, c) in hex_part.chars().enumerate() {
+            if c == ';' {
+                return j > 0;
+            }
+            if !c.is_ascii_hexdigit() {
+                return false;
+            }
+        }
+    }
+
+    if let Some(num_part) = remaining.strip_prefix("&#") {
+        for (j, c) in num_part.chars().enumerate() {
+            if c == ';' {
+                return j > 0;
+            }
+            if !c.is_ascii_digit() {
+                return false;
+            }
+        }
+    }
+
+    false
+}
+
 fn create_client() -> Result<reqwest::blocking::Client> {
     reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
@@ -47,6 +108,15 @@ pub fn parse_rss(content: &str, _feed_url: &str) -> Result<Vec<Article>> {
     }
 
     if let Ok(feed) = content.parse::<atom_syndication::Feed>() {
+        return parse_atom_feed(&feed);
+    }
+
+    let sanitized = sanitize_xml(content);
+    if let Ok(channel) = sanitized.parse::<rss::Channel>() {
+        return parse_rss_channel(&channel);
+    }
+
+    if let Ok(feed) = sanitized.parse::<atom_syndication::Feed>() {
         return parse_atom_feed(&feed);
     }
 
@@ -320,5 +390,38 @@ Entry</title>
         assert_eq!(articles[0].title, "RDF Item");
         assert_eq!(articles[0].link, "https://example.com/item1");
         assert!(articles[0].published.is_some());
+    }
+
+    #[test]
+    fn test_sanitize_unescaped_ampersands() {
+        let input = "url?foo=1&bar=2&amp;baz=3";
+        let expected = "url?foo=1&amp;bar=2&amp;baz=3";
+        assert_eq!(sanitize_xml(input), expected);
+    }
+
+    #[test]
+    fn test_sanitize_preserves_valid_entities() {
+        let input = "&amp; &lt; &gt; &quot; &apos; &#38; &#x26;";
+        assert_eq!(sanitize_xml(input), input);
+    }
+
+    #[test]
+    fn test_parse_rss_with_unescaped_ampersands() {
+        let rss_with_ampersands = r#"<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Test Feed</title>
+    <item>
+      <title>Test Item</title>
+      <link>https://example.com?foo=1&amp;bar=2</link>
+      <description>Image: https://example.com/img?w=100&h=200</description>
+    </item>
+  </channel>
+</rss>"#;
+
+        let articles = parse_rss(rss_with_ampersands, "https://example.com/feed.xml").unwrap();
+
+        assert_eq!(articles.len(), 1);
+        assert_eq!(articles[0].title, "Test Item");
     }
 }
