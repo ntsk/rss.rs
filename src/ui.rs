@@ -427,7 +427,10 @@ fn fetch_all_articles() -> Option<FetchResult> {
         .collect();
 
     let mut articles: Vec<Article> = results.iter().flat_map(|(_, a, _, _)| a.clone()).collect();
-    let failed_feeds: Vec<String> = results.iter().filter_map(|(_, _, f, _)| f.clone()).collect();
+    let failed_feeds: Vec<String> = results
+        .iter()
+        .filter_map(|(_, _, f, _)| f.clone())
+        .collect();
     let feed_status: HashMap<String, bool> = results
         .iter()
         .map(|(url, _, _, success)| (url.clone(), *success))
@@ -887,7 +890,10 @@ mod tests {
 
         app.apply_feed_status(status);
 
-        assert_eq!(app.get_feed_status("https://example.com/feed.xml"), Some(true));
+        assert_eq!(
+            app.get_feed_status("https://example.com/feed.xml"),
+            Some(true)
+        );
     }
 
     #[test]
@@ -899,7 +905,10 @@ mod tests {
 
         app.apply_feed_status(status);
 
-        assert_eq!(app.get_feed_status("https://example.com/feed.xml"), Some(false));
+        assert_eq!(
+            app.get_feed_status("https://example.com/feed.xml"),
+            Some(false)
+        );
     }
 
     #[test]
