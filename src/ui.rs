@@ -355,6 +355,32 @@ fn add_feed_and_refresh(app: &mut App, url: &str) {
     }
 }
 
+fn wrap_text(s: &str, max_width: usize) -> Vec<String> {
+    if max_width == 0 {
+        return vec![s.to_string()];
+    }
+    let mut lines = Vec::new();
+    let mut current_line = String::new();
+    let mut current_width = 0;
+
+    for c in s.chars() {
+        if current_width >= max_width {
+            lines.push(current_line);
+            current_line = String::new();
+            current_width = 0;
+        }
+        current_line.push(c);
+        current_width += 1;
+    }
+    if !current_line.is_empty() {
+        lines.push(current_line);
+    }
+    if lines.is_empty() {
+        lines.push(String::new());
+    }
+    lines
+}
+
 fn truncate_str(s: &str, max_width: usize) -> String {
     if s.chars().count() <= max_width {
         s.to_string()
@@ -498,15 +524,25 @@ fn draw_article_list(frame: &mut Frame, app: &App, list_state: &mut ListState) {
                 .map(|d| d.format("%m/%d").to_string())
                 .unwrap_or_else(|| "     ".to_string());
             let title_max = available_width.saturating_sub(7);
-            let title = truncate_str(&a.title, title_max);
-            let line1 = Line::from(format!("{} {}", date, title));
+            let title_lines = wrap_text(&a.title, title_max);
+            let mut lines: Vec<Line> = title_lines
+                .iter()
+                .enumerate()
+                .map(|(i, line)| {
+                    if i == 0 {
+                        Line::from(format!("{} {}", date, line))
+                    } else {
+                        Line::from(format!("      {}", line))
+                    }
+                })
+                .collect();
             let feed_max = available_width.saturating_sub(8);
             let feed_title = truncate_str(&a.feed_title, feed_max);
-            let line2 = Line::from(vec![Span::styled(
+            lines.push(Line::from(vec![Span::styled(
                 format!("      [{}]", feed_title),
                 Style::default().fg(Color::Gray),
-            )]);
-            ListItem::new(Text::from(vec![line1, line2]))
+            )]));
+            ListItem::new(Text::from(lines))
         })
         .collect();
 
