@@ -112,56 +112,14 @@ pub fn fetch_article_content(url: &str, width: usize) -> Result<String> {
         .text()
         .with_context(|| format!("Failed to read response from {}", url))?;
 
-    let (target_url, target_html) = resolve_article_url(&client, url, &html)?;
-
-    let mut content_html = target_html.clone();
-    if let Ok(parsed_url) = target_url.parse::<reqwest::Url>()
-        && let Ok(extracted) =
-            readability::extractor::extract(&mut target_html.as_bytes(), &parsed_url)
+    let mut content_html = html.clone();
+    if let Ok(parsed_url) = url.parse::<reqwest::Url>()
+        && let Ok(extracted) = readability::extractor::extract(&mut html.as_bytes(), &parsed_url)
     {
         content_html = extracted.content;
     }
 
     Ok(html2text::from_read(content_html.as_bytes(), width))
-}
-
-fn resolve_article_url(
-    client: &reqwest::blocking::Client,
-    url: &str,
-    html: &str,
-) -> Result<(String, String)> {
-    if let Some(canonical_url) = extract_canonical_url(html)
-        && canonical_url != url
-    {
-        let response = client
-            .get(&canonical_url)
-            .send()
-            .with_context(|| format!("Failed to connect to {}", canonical_url))?;
-        let canonical_html = response
-            .text()
-            .with_context(|| format!("Failed to read response from {}", canonical_url))?;
-        return Ok((canonical_url, canonical_html));
-    }
-    Ok((url.to_string(), html.to_string()))
-}
-
-fn extract_canonical_url(html: &str) -> Option<String> {
-    let lower = html.to_lowercase();
-    let canonical_pos = lower.find("rel=\"canonical\"")?;
-    let search_start = canonical_pos.saturating_sub(200);
-    let search_area = &html[search_start..canonical_pos + 50];
-
-    if let Some(href_pos) = search_area.to_lowercase().find("href=\"") {
-        let href_start = search_start + href_pos + 6;
-        let rest = &html[href_start..];
-        if let Some(end) = rest.find('"') {
-            let url = rest[..end].to_string();
-            if url.starts_with("http") {
-                return Some(url);
-            }
-        }
-    }
-    None
 }
 
 pub fn parse_feed(content: &str) -> Result<Vec<Article>> {
