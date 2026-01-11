@@ -103,6 +103,12 @@ fn run_event_loop(
                     KeyCode::Esc => app.close_feed_list(),
                     KeyCode::Down | KeyCode::Char('j') => app.select_next_feed(),
                     KeyCode::Up | KeyCode::Char('k') => app.select_previous_feed(),
+                    KeyCode::Enter => {
+                        if let Some(feed) = app.feeds.get(app.feed_selected) {
+                            let _ = open::that(&feed.url);
+                        }
+                    }
+                    KeyCode::Char('a') => app.start_adding_feed(),
                     KeyCode::Char('d') => delete_feed_and_refresh(app),
                     KeyCode::Char('s') => sort_feeds(app),
                     _ => {}
@@ -286,12 +292,16 @@ fn draw_feed_list(frame: &mut Frame, app: &App) {
             .block(Block::default().borders(Borders::ALL).title("Status"));
         frame.render_widget(status, bottom_chunks[0]);
 
-        let help = Paragraph::new("↑/↓: Navigate | d: Delete | s: Sort | Esc: Back")
-            .block(Block::default().borders(Borders::ALL));
+        let help = Paragraph::new(
+            "↑/↓: Navigate | Enter: Open | a: Add | d: Delete | s: Sort | Esc: Back",
+        )
+        .block(Block::default().borders(Borders::ALL));
         frame.render_widget(help, bottom_chunks[1]);
     } else {
-        let help = Paragraph::new("↑/↓: Navigate | d: Delete | s: Sort | Esc: Back")
-            .block(Block::default().borders(Borders::ALL));
+        let help = Paragraph::new(
+            "↑/↓: Navigate | Enter: Open | a: Add | d: Delete | s: Sort | Esc: Back",
+        )
+        .block(Block::default().borders(Borders::ALL));
         frame.render_widget(help, bottom_chunks[0]);
     }
 }
