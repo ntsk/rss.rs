@@ -11,7 +11,7 @@ use crossterm::{
 };
 use ratatui::{
     prelude::*,
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
 };
 use std::collections::HashMap;
 use std::io::{self, stdout};
@@ -117,9 +117,10 @@ fn run_event_loop(
                     KeyCode::Enter => {
                         if let Some(article) = app.selected_article() {
                             let link = article.link.clone();
+                            let width = terminal.size()?.width.saturating_sub(4) as usize;
                             app.set_status("Loading...");
                             terminal.draw(|frame| draw_ui(frame, app, list_state))?;
-                            match feed::fetch_article_content(&link, 80) {
+                            match feed::fetch_article_content(&link, width.max(40)) {
                                 Ok(content) => {
                                     app.article_content = Some(content);
                                     app.article_scroll = 0;
@@ -407,18 +408,21 @@ fn draw_feed_list(frame: &mut Frame, app: &App) {
 
     if let Some(msg) = &app.status_message {
         let status = Paragraph::new(msg.as_str())
+            .wrap(Wrap { trim: true })
             .block(Block::default().borders(Borders::ALL).title("Status"));
         frame.render_widget(status, bottom_chunks[0]);
 
         let help = Paragraph::new(
             "↑/↓: Navigate | Enter: Open | a: Add | d: Delete | s: Sort | Esc: Back",
         )
+        .wrap(Wrap { trim: true })
         .block(Block::default().borders(Borders::ALL));
         frame.render_widget(help, bottom_chunks[1]);
     } else {
         let help = Paragraph::new(
             "↑/↓: Navigate | Enter: Open | a: Add | d: Delete | s: Sort | Esc: Back",
         )
+        .wrap(Wrap { trim: true })
         .block(Block::default().borders(Borders::ALL));
         frame.render_widget(help, bottom_chunks[0]);
     }
@@ -454,6 +458,7 @@ fn draw_article_content(frame: &mut Frame, app: &App) {
     frame.render_widget(content_widget, chunks[0]);
 
     let help = Paragraph::new("↑/↓: Scroll | o: Open in browser | q/Esc: Back")
+        .wrap(Wrap { trim: true })
         .block(Block::default().borders(Borders::ALL));
     frame.render_widget(help, chunks[1]);
 }
@@ -514,22 +519,26 @@ fn draw_article_list(frame: &mut Frame, app: &App, list_state: &mut ListState) {
         frame.render_widget(input, bottom_chunks[0]);
 
         let help = Paragraph::new("Type feed URL and press Enter")
+            .wrap(Wrap { trim: true })
             .block(Block::default().borders(Borders::ALL));
         frame.render_widget(help, bottom_chunks[1]);
     } else if let Some(msg) = &app.status_message {
         let status = Paragraph::new(msg.as_str())
+            .wrap(Wrap { trim: true })
             .block(Block::default().borders(Borders::ALL).title("Status"));
         frame.render_widget(status, bottom_chunks[0]);
 
         let help = Paragraph::new(
             "↑/↓: Navigate | Enter: View | o: Open | r: Reload | a: Add | l: List | q: Quit",
         )
+        .wrap(Wrap { trim: true })
         .block(Block::default().borders(Borders::ALL));
         frame.render_widget(help, bottom_chunks[1]);
     } else {
         let help = Paragraph::new(
             "↑/↓: Navigate | Enter: View | o: Open | r: Reload | a: Add | l: List | q: Quit",
         )
+        .wrap(Wrap { trim: true })
         .block(Block::default().borders(Borders::ALL));
         frame.render_widget(help, bottom_chunks[0]);
     }
