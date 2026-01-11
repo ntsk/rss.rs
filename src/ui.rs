@@ -27,7 +27,7 @@ pub fn run_app(articles: Vec<Article>, settings: &Settings) -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     let refresh_interval = Duration::from_secs(settings.refresh_interval_secs);
-    let mut app = App::new(articles, refresh_interval);
+    let mut app = App::new(articles, refresh_interval, settings.auto_sort);
     let mut list_state = ListState::default();
     list_state.select(Some(0));
 
@@ -104,6 +104,7 @@ fn run_event_loop(
                     KeyCode::Down | KeyCode::Char('j') => app.select_next_feed(),
                     KeyCode::Up | KeyCode::Char('k') => app.select_previous_feed(),
                     KeyCode::Char('d') => delete_feed_and_refresh(app),
+                    KeyCode::Char('s') => sort_feeds(app),
                     _ => {}
                 },
                 InputMode::AddingFeed => match key.code {
@@ -162,6 +163,9 @@ fn delete_feed_and_refresh(app: &mut App) {
     };
 
     if manager.delete(&url).is_ok() {
+        if app.auto_sort {
+            let _ = manager.sort();
+        }
         app.feeds = manager.list().to_vec();
         if !app.feeds.is_empty() && app.feed_selected >= app.feeds.len() {
             app.feed_selected = app.feeds.len() - 1;
@@ -172,6 +176,23 @@ fn delete_feed_and_refresh(app: &mut App) {
             app.update_articles(result.articles);
         }
         app.set_status(format!("Deleted: {}", name));
+    }
+}
+
+fn sort_feeds(app: &mut App) {
+    let config_path = match crate::config::get_config_path() {
+        Ok(p) => p,
+        Err(_) => return,
+    };
+    let mut manager = match SubscriptionManager::new(&config_path) {
+        Ok(m) => m,
+        Err(_) => return,
+    };
+
+    if manager.sort().is_ok() {
+        app.feeds = manager.list().to_vec();
+        app.feed_selected = 0;
+        app.set_status("Sorted");
     }
 }
 
@@ -197,6 +218,9 @@ fn add_feed_and_refresh(app: &mut App, url: &str) {
 
     match manager.add(url, title.clone()) {
         Ok(_) => {
+            if app.auto_sort {
+                let _ = manager.sort();
+            }
             if let Some(result) = fetch_all_articles()
                 && !result.articles.is_empty()
             {
@@ -262,11 +286,11 @@ fn draw_feed_list(frame: &mut Frame, app: &App) {
             .block(Block::default().borders(Borders::ALL).title("Status"));
         frame.render_widget(status, bottom_chunks[0]);
 
-        let help = Paragraph::new("↑/↓: Navigate | d: Delete | Esc: Back")
+        let help = Paragraph::new("↑/↓: Navigate | d: Delete | s: Sort | Esc: Back")
             .block(Block::default().borders(Borders::ALL));
         frame.render_widget(help, bottom_chunks[1]);
     } else {
-        let help = Paragraph::new("↑/↓: Navigate | d: Delete | Esc: Back")
+        let help = Paragraph::new("↑/↓: Navigate | d: Delete | s: Sort | Esc: Back")
             .block(Block::default().borders(Borders::ALL));
         frame.render_widget(help, bottom_chunks[0]);
     }
@@ -417,10 +441,11 @@ pub struct App {
     pub status_message_time: Option<Instant>,
     pub feeds: Vec<Feed>,
     pub feed_selected: usize,
+    pub auto_sort: bool,
 }
 
 impl App {
-    pub fn new(articles: Vec<Article>, refresh_interval: Duration) -> Self {
+    pub fn new(articles: Vec<Article>, refresh_interval: Duration, auto_sort: bool) -> Self {
         Self {
             articles,
             selected: 0,
@@ -434,6 +459,7 @@ impl App {
             status_message_time: None,
             feeds: Vec::new(),
             feed_selected: 0,
+            auto_sort,
         }
     }
 
@@ -550,7 +576,7 @@ mod tests {
     #[test]
     fn test_new_app_with_articles() {
         let articles = create_test_articles(3);
-        let app = App::new(articles.clone(), Duration::from_secs(300));
+        let app = App::new(articles.clone(), Duration::from_secs(300), false);
 
         assert_eq!(app.articles.len(), 3);
         assert_eq!(app.selected, 0);
@@ -560,7 +586,7 @@ mod tests {
     #[test]
     fn test_select_next() {
         let articles = create_test_articles(3);
-        let mut app = App::new(articles, Duration::from_secs(300));
+        let mut app = App::new(articles, Duration::from_secs(300), false);
 
         app.select_next();
         assert_eq!(app.selected, 1);
@@ -575,7 +601,7 @@ mod tests {
     #[test]
     fn test_select_previous() {
         let articles = create_test_articles(3);
-        let mut app = App::new(articles, Duration::from_secs(300));
+        let mut app = App::new(articles, Duration::from_secs(300), false);
         app.selected = 2;
 
         app.select_previous();
@@ -591,7 +617,7 @@ mod tests {
     #[test]
     fn test_quit() {
         let articles = create_test_articles(3);
-        let mut app = App::new(articles, Duration::from_secs(300));
+        let mut app = App::new(articles, Duration::from_secs(300), false);
 
         app.quit();
 
@@ -601,7 +627,7 @@ mod tests {
     #[test]
     fn test_request_reload() {
         let articles = create_test_articles(3);
-        let mut app = App::new(articles, Duration::from_secs(300));
+        let mut app = App::new(articles, Duration::from_secs(300), false);
 
         app.request_reload();
 
@@ -611,7 +637,7 @@ mod tests {
     #[test]
     fn test_should_auto_refresh_after_interval() {
         let articles = create_test_articles(3);
-        let mut app = App::new(articles, Duration::from_secs(0));
+        let mut app = App::new(articles, Duration::from_secs(0), false);
         app.last_refresh = Instant::now() - Duration::from_secs(1);
 
         assert!(app.should_auto_refresh());
@@ -620,7 +646,7 @@ mod tests {
     #[test]
     fn test_should_not_auto_refresh_before_interval() {
         let articles = create_test_articles(3);
-        let app = App::new(articles, Duration::from_secs(300));
+        let app = App::new(articles, Duration::from_secs(300), false);
 
         assert!(!app.should_auto_refresh());
     }
@@ -628,7 +654,7 @@ mod tests {
     #[test]
     fn test_update_articles_preserves_selection_if_valid() {
         let articles = create_test_articles(5);
-        let mut app = App::new(articles, Duration::from_secs(300));
+        let mut app = App::new(articles, Duration::from_secs(300), false);
         app.selected = 2;
 
         let new_articles = create_test_articles(5);
@@ -640,7 +666,7 @@ mod tests {
     #[test]
     fn test_update_articles_adjusts_selection_if_out_of_bounds() {
         let articles = create_test_articles(5);
-        let mut app = App::new(articles, Duration::from_secs(300));
+        let mut app = App::new(articles, Duration::from_secs(300), false);
         app.selected = 4;
 
         let new_articles = create_test_articles(2);
@@ -652,7 +678,7 @@ mod tests {
     #[test]
     fn test_selected_article() {
         let articles = create_test_articles(3);
-        let mut app = App::new(articles, Duration::from_secs(300));
+        let mut app = App::new(articles, Duration::from_secs(300), false);
         app.selected = 1;
 
         let article = app.selected_article().unwrap();
@@ -661,7 +687,7 @@ mod tests {
 
     #[test]
     fn test_selected_article_empty_list() {
-        let app = App::new(vec![], Duration::from_secs(300));
+        let app = App::new(vec![], Duration::from_secs(300), false);
 
         assert!(app.selected_article().is_none());
     }
@@ -669,7 +695,7 @@ mod tests {
     #[test]
     fn test_start_adding_feed() {
         let articles = create_test_articles(3);
-        let mut app = App::new(articles, Duration::from_secs(300));
+        let mut app = App::new(articles, Duration::from_secs(300), false);
         app.input_buffer = "old".to_string();
         app.status_message = Some("old message".to_string());
 
@@ -683,7 +709,7 @@ mod tests {
     #[test]
     fn test_cancel_input() {
         let articles = create_test_articles(3);
-        let mut app = App::new(articles, Duration::from_secs(300));
+        let mut app = App::new(articles, Duration::from_secs(300), false);
         app.input_mode = InputMode::AddingFeed;
         app.input_buffer = "https://example.com".to_string();
 
@@ -696,7 +722,7 @@ mod tests {
     #[test]
     fn test_select_next_feed() {
         let articles = create_test_articles(3);
-        let mut app = App::new(articles, Duration::from_secs(300));
+        let mut app = App::new(articles, Duration::from_secs(300), false);
         app.feeds = vec![
             Feed {
                 url: "https://example.com/1".to_string(),
@@ -718,7 +744,7 @@ mod tests {
     #[test]
     fn test_select_previous_feed() {
         let articles = create_test_articles(3);
-        let mut app = App::new(articles, Duration::from_secs(300));
+        let mut app = App::new(articles, Duration::from_secs(300), false);
         app.feeds = vec![
             Feed {
                 url: "https://example.com/1".to_string(),
@@ -741,7 +767,7 @@ mod tests {
     #[test]
     fn test_close_feed_list() {
         let articles = create_test_articles(3);
-        let mut app = App::new(articles, Duration::from_secs(300));
+        let mut app = App::new(articles, Duration::from_secs(300), false);
         app.input_mode = InputMode::FeedList;
         app.feeds = vec![Feed {
             url: "https://example.com".to_string(),
@@ -757,7 +783,7 @@ mod tests {
     #[test]
     fn test_set_status() {
         let articles = create_test_articles(3);
-        let mut app = App::new(articles, Duration::from_secs(300));
+        let mut app = App::new(articles, Duration::from_secs(300), false);
 
         app.set_status("Test message");
 
@@ -768,7 +794,7 @@ mod tests {
     #[test]
     fn test_clear_status() {
         let articles = create_test_articles(3);
-        let mut app = App::new(articles, Duration::from_secs(300));
+        let mut app = App::new(articles, Duration::from_secs(300), false);
         app.set_status("Test message");
 
         app.clear_status();

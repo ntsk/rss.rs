@@ -87,6 +87,7 @@ rss export feeds.opml
 | `↑` / `k` | Move up |
 | `↓` / `j` | Move down |
 | `d` | Delete selected feed |
+| `s` | Sort feeds |
 | `Esc` | Back to articles |
 
 ## Configuration
@@ -105,6 +106,9 @@ Create `~/.config/rss/config.toml` to customize:
 ```toml
 # Auto-refresh interval in seconds (default: 300)
 refresh_interval_secs = 600
+
+# Auto-sort feeds when adding/deleting (default: false)
+auto_sort = true
 ```
 
 ## Logging
