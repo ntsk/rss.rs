@@ -5,6 +5,25 @@
 
 A terminal-based RSS/Atom feed reader with TUI.
 
+```
+┌Articles─────────────────────────────────────────────────────────────────────┐
+│> 01/12 New Release: Version 2.0 is here                                     │
+│        [Tech Blog]                                                          │
+│  01/11 Understanding Rust Ownership                                         │
+│        [Rust Weekly]                                                        │
+│  01/10 10 Tips for Better Code Reviews                                      │
+│        [Dev Community]                                                      │
+│  01/09 Introduction to WebAssembly                                          │
+│        [Mozilla Hacks]                                                      │
+│                                                                             │
+│                                                                             │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│↑/↓: Navigate | Enter: Open | r: Reload | a: Add | l: List | q: Quit        │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
 ## Features
 
 - RSS 2.0 and Atom feed support
