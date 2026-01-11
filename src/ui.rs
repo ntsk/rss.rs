@@ -397,8 +397,8 @@ fn draw_article_content(frame: &mut Frame, app: &App) {
         .collect::<Vec<_>>()
         .join("\n");
 
-    let content_widget = Paragraph::new(visible_lines)
-        .block(Block::default().borders(Borders::ALL).title(title));
+    let content_widget =
+        Paragraph::new(visible_lines).block(Block::default().borders(Borders::ALL).title(title));
     frame.render_widget(content_widget, chunks[0]);
 
     let help = Paragraph::new("↑/↓: Scroll | o: Open in browser | q/Esc: Back")
@@ -469,14 +469,16 @@ fn draw_article_list(frame: &mut Frame, app: &App, list_state: &mut ListState) {
             .block(Block::default().borders(Borders::ALL).title("Status"));
         frame.render_widget(status, bottom_chunks[0]);
 
-        let help =
-            Paragraph::new("↑/↓: Navigate | Enter: View | o: Open | r: Reload | a: Add | l: List | q: Quit")
-                .block(Block::default().borders(Borders::ALL));
+        let help = Paragraph::new(
+            "↑/↓: Navigate | Enter: View | o: Open | r: Reload | a: Add | l: List | q: Quit",
+        )
+        .block(Block::default().borders(Borders::ALL));
         frame.render_widget(help, bottom_chunks[1]);
     } else {
-        let help =
-            Paragraph::new("↑/↓: Navigate | Enter: View | o: Open | r: Reload | a: Add | l: List | q: Quit")
-                .block(Block::default().borders(Borders::ALL));
+        let help = Paragraph::new(
+            "↑/↓: Navigate | Enter: View | o: Open | r: Reload | a: Add | l: List | q: Quit",
+        )
+        .block(Block::default().borders(Borders::ALL));
         frame.render_widget(help, bottom_chunks[0]);
     }
 }
