@@ -18,7 +18,7 @@ A terminal-based RSS/Atom feed reader with TUI.
 │                                                                       │
 └───────────────────────────────────────────────────────────────────────┘
 ┌───────────────────────────────────────────────────────────────────────┐
-│↑/↓: Navigate | Enter: Open | r: Reload | a: Add | l: List | q: Quit   │
+│↑/↓: Navigate | Enter: View | o: Open | r: Reload | a: Add | l: List | q: Quit│
 └───────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -103,12 +103,22 @@ rss config refresh_interval_secs 600
 |-----|--------|
 | `↑` / `k` | Move up |
 | `↓` / `j` | Move down |
-| `Enter` | Open article in browser |
+| `Enter` | View article content |
+| `o` | Open article in browser |
 | `r` | Reload feeds |
 | `a` | Add new feed |
 | `l` | Show feed list |
-| `Ctrl+V` / `Cmd+V` | Paste URL (in add mode) |
-| `q` / `Esc` | Quit |
+| `Ctrl+V` / `Cmd+V` / `p` | Paste URL (in add mode) |
+| `q` / `Ctrl+c` | Quit |
+
+### Article View Mode
+
+| Key | Action |
+|-----|--------|
+| `↑` / `k` | Scroll up |
+| `↓` / `j` | Scroll down |
+| `o` | Open in browser |
+| `q` / `Esc` | Back to list |
 
 ### Feed List Mode
 
