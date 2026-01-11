@@ -1,4 +1,7 @@
-# rss
+# rss.rs
+
+[![test](https://github.com/ntsk/rss.rs/actions/workflows/test.yml/badge.svg)](https://github.com/ntsk/rss.rs/actions/workflows/test.yml)
+[![lint](https://github.com/ntsk/rss.rs/actions/workflows/lint.yml/badge.svg)](https://github.com/ntsk/rss.rs/actions/workflows/lint.yml)
 
 A terminal-based RSS/Atom feed reader with TUI.
 
