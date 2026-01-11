@@ -355,6 +355,17 @@ fn add_feed_and_refresh(app: &mut App, url: &str) {
     }
 }
 
+fn truncate_str(s: &str, max_width: usize) -> String {
+    if s.chars().count() <= max_width {
+        s.to_string()
+    } else if max_width <= 3 {
+        s.chars().take(max_width).collect()
+    } else {
+        let truncated: String = s.chars().take(max_width - 3).collect();
+        format!("{}...", truncated)
+    }
+}
+
 fn draw_ui(frame: &mut Frame, app: &App, list_state: &mut ListState) {
     match app.input_mode {
         InputMode::FeedList => draw_feed_list(frame, app),
@@ -371,6 +382,7 @@ fn draw_feed_list(frame: &mut Frame, app: &App) {
         .constraints([Constraint::Min(0), Constraint::Length(bottom_height)])
         .split(frame.area());
 
+    let available_width = chunks[0].width.saturating_sub(6) as usize;
     let items: Vec<ListItem> = app
         .feeds
         .iter()
@@ -384,6 +396,7 @@ fn draw_feed_list(frame: &mut Frame, app: &App) {
                 Some(title) => format!("{} ({})", title, f.url),
                 None => f.url.clone(),
             };
+            let display = truncate_str(&display, available_width);
             ListItem::new(Line::from(vec![status_icon, Span::raw(display)]))
         })
         .collect();
@@ -475,6 +488,7 @@ fn draw_article_list(frame: &mut Frame, app: &App, list_state: &mut ListState) {
         .constraints([Constraint::Min(0), Constraint::Length(bottom_height)])
         .split(frame.area());
 
+    let available_width = chunks[0].width.saturating_sub(4) as usize;
     let items: Vec<ListItem> = app
         .articles
         .iter()
@@ -483,9 +497,13 @@ fn draw_article_list(frame: &mut Frame, app: &App, list_state: &mut ListState) {
                 .published
                 .map(|d| d.format("%m/%d").to_string())
                 .unwrap_or_else(|| "     ".to_string());
-            let line1 = Line::from(format!("{} {}", date, a.title));
+            let title_max = available_width.saturating_sub(7);
+            let title = truncate_str(&a.title, title_max);
+            let line1 = Line::from(format!("{} {}", date, title));
+            let feed_max = available_width.saturating_sub(8);
+            let feed_title = truncate_str(&a.feed_title, feed_max);
             let line2 = Line::from(vec![Span::styled(
-                format!("      [{}]", a.feed_title),
+                format!("      [{}]", feed_title),
                 Style::default().fg(Color::Gray),
             )]);
             ListItem::new(Text::from(vec![line1, line2]))
