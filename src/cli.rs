@@ -12,11 +12,25 @@ use std::path::PathBuf;
 
 #[derive(Subcommand)]
 pub enum Commands {
-    Add { url: String },
-    Delete { url: String },
+    Add {
+        url: String,
+    },
+    Delete {
+        url: String,
+    },
     List,
-    Import { file: PathBuf },
-    Export { file: PathBuf },
+    Import {
+        file: PathBuf,
+    },
+    Export {
+        file: PathBuf,
+    },
+    Config {
+        #[arg(short, long)]
+        list: bool,
+        key: Option<String>,
+        value: Option<String>,
+    },
 }
 
 #[cfg(test)]
@@ -63,5 +77,36 @@ mod tests {
         let cli = Cli::parse_from(["rss"]);
 
         assert!(cli.command.is_none());
+    }
+
+    #[test]
+    fn test_parse_config_list() {
+        let cli = Cli::parse_from(["rss", "config", "--list"]);
+
+        match cli.command {
+            Some(Commands::Config {
+                list: true,
+                key: None,
+                value: None,
+            }) => {}
+            _ => panic!("Expected Config command with --list"),
+        }
+    }
+
+    #[test]
+    fn test_parse_config_set() {
+        let cli = Cli::parse_from(["rss", "config", "auto_sort", "true"]);
+
+        match cli.command {
+            Some(Commands::Config {
+                list: false,
+                key: Some(k),
+                value: Some(v),
+            }) => {
+                assert_eq!(k, "auto_sort");
+                assert_eq!(v, "true");
+            }
+            _ => panic!("Expected Config command with key and value"),
+        }
     }
 }

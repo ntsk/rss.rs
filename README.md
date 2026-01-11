@@ -67,6 +67,19 @@ rss import feeds.opml
 rss export feeds.opml
 ```
 
+### Show settings
+
+```bash
+rss config --list
+```
+
+### Change settings
+
+```bash
+rss config auto_sort true
+rss config refresh_interval_secs 600
+```
+
 ## Keyboard Shortcuts
 
 | Key | Action |

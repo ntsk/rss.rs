@@ -38,6 +38,39 @@ impl Settings {
             Ok(Settings::default())
         }
     }
+
+    pub fn save(&self) -> Result<()> {
+        let path = get_settings_path()?;
+        let content = toml::to_string_pretty(self)?;
+        fs::write(&path, content)?;
+        Ok(())
+    }
+
+    pub fn set(&mut self, key: &str, value: &str) -> Result<()> {
+        match key {
+            "refresh_interval_secs" => {
+                self.refresh_interval_secs = value
+                    .parse()
+                    .map_err(|_| anyhow::anyhow!("Invalid value for refresh_interval_secs"))?;
+            }
+            "auto_sort" => {
+                self.auto_sort = value
+                    .parse()
+                    .map_err(|_| anyhow::anyhow!("Invalid value for auto_sort (use true/false)"))?;
+            }
+            _ => {
+                anyhow::bail!("Unknown setting: {}", key);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn display(&self) -> String {
+        format!(
+            "refresh_interval_secs = {}\nauto_sort = {}",
+            self.refresh_interval_secs, self.auto_sort
+        )
+    }
 }
 
 pub fn get_config_dir() -> Result<PathBuf> {
@@ -96,5 +129,33 @@ mod tests {
         let settings = Settings::default();
 
         assert!(!settings.auto_sort);
+    }
+
+    #[test]
+    fn test_settings_set_valid_key() {
+        let mut settings = Settings::default();
+
+        let result = settings.set("auto_sort", "true");
+
+        assert!(result.is_ok());
+        assert!(settings.auto_sort);
+    }
+
+    #[test]
+    fn test_settings_set_invalid_key() {
+        let mut settings = Settings::default();
+
+        let result = settings.set("invalid_key", "value");
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_settings_set_invalid_value() {
+        let mut settings = Settings::default();
+
+        let result = settings.set("auto_sort", "invalid");
+
+        assert!(result.is_err());
     }
 }
