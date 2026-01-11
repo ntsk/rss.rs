@@ -118,7 +118,9 @@ pub fn fetch_article_content(url: &str, width: usize) -> Result<String> {
         && let Ok(extracted) = readability::extractor::extract(&mut html.as_bytes(), &parsed_url)
     {
         let extracted_text = html2text::from_read(extracted.content.as_bytes(), width);
-        if extracted_text.trim().len() >= 100 {
+        let extracted_len = extracted_text.trim().len();
+        let full_len = full_text.trim().len();
+        if extracted_len >= 500 || (extracted_len >= 200 && extracted_len * 10 >= full_len) {
             return Ok(extracted_text);
         }
     }
