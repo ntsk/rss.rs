@@ -355,6 +355,43 @@ fn add_feed_and_refresh(app: &mut App, url: &str) {
     }
 }
 
+fn wrap_text(s: &str, max_width: usize) -> Vec<String> {
+    if max_width == 0 {
+        return vec![s.to_string()];
+    }
+    let mut lines = Vec::new();
+    let mut current_line = String::new();
+    let mut current_width = 0;
+
+    for c in s.chars() {
+        if current_width >= max_width {
+            lines.push(current_line);
+            current_line = String::new();
+            current_width = 0;
+        }
+        current_line.push(c);
+        current_width += 1;
+    }
+    if !current_line.is_empty() {
+        lines.push(current_line);
+    }
+    if lines.is_empty() {
+        lines.push(String::new());
+    }
+    lines
+}
+
+fn truncate_str(s: &str, max_width: usize) -> String {
+    if s.chars().count() <= max_width {
+        s.to_string()
+    } else if max_width <= 3 {
+        s.chars().take(max_width).collect()
+    } else {
+        let truncated: String = s.chars().take(max_width - 3).collect();
+        format!("{}...", truncated)
+    }
+}
+
 fn draw_ui(frame: &mut Frame, app: &App, list_state: &mut ListState) {
     match app.input_mode {
         InputMode::FeedList => draw_feed_list(frame, app),
@@ -364,13 +401,27 @@ fn draw_ui(frame: &mut Frame, app: &App, list_state: &mut ListState) {
 }
 
 fn draw_feed_list(frame: &mut Frame, app: &App) {
-    let bottom_height = if app.status_message.is_some() { 6 } else { 3 };
+    let help_text = "↑/↓: Navigate | Enter: Open | a: Add | d: Delete | s: Sort | Esc: Back";
+    let available_width = frame.area().width.saturating_sub(4) as usize;
+    let help_lines = if available_width > 0 {
+        help_text.chars().count().div_ceil(available_width)
+    } else {
+        1
+    };
+    let help_height = (help_lines as u16) + 2;
+
+    let bottom_height = if app.status_message.is_some() {
+        help_height + 3
+    } else {
+        help_height
+    };
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(0), Constraint::Length(bottom_height)])
         .split(frame.area());
 
+    let available_width = chunks[0].width.saturating_sub(6) as usize;
     let items: Vec<ListItem> = app
         .feeds
         .iter()
@@ -384,6 +435,7 @@ fn draw_feed_list(frame: &mut Frame, app: &App) {
                 Some(title) => format!("{} ({})", title, f.url),
                 None => f.url.clone(),
             };
+            let display = truncate_str(&display, available_width);
             ListItem::new(Line::from(vec![status_icon, Span::raw(display)]))
         })
         .collect();
@@ -400,9 +452,9 @@ fn draw_feed_list(frame: &mut Frame, app: &App) {
     let bottom_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints(if app.status_message.is_some() {
-            vec![Constraint::Length(3), Constraint::Length(3)]
+            vec![Constraint::Length(3), Constraint::Length(help_height)]
         } else {
-            vec![Constraint::Length(3)]
+            vec![Constraint::Length(help_height)]
         })
         .split(chunks[1]);
 
@@ -412,26 +464,31 @@ fn draw_feed_list(frame: &mut Frame, app: &App) {
             .block(Block::default().borders(Borders::ALL).title("Status"));
         frame.render_widget(status, bottom_chunks[0]);
 
-        let help = Paragraph::new(
-            "↑/↓: Navigate | Enter: Open | a: Add | d: Delete | s: Sort | Esc: Back",
-        )
-        .wrap(Wrap { trim: true })
-        .block(Block::default().borders(Borders::ALL));
+        let help = Paragraph::new(help_text)
+            .wrap(Wrap { trim: true })
+            .block(Block::default().borders(Borders::ALL));
         frame.render_widget(help, bottom_chunks[1]);
     } else {
-        let help = Paragraph::new(
-            "↑/↓: Navigate | Enter: Open | a: Add | d: Delete | s: Sort | Esc: Back",
-        )
-        .wrap(Wrap { trim: true })
-        .block(Block::default().borders(Borders::ALL));
+        let help = Paragraph::new(help_text)
+            .wrap(Wrap { trim: true })
+            .block(Block::default().borders(Borders::ALL));
         frame.render_widget(help, bottom_chunks[0]);
     }
 }
 
 fn draw_article_content(frame: &mut Frame, app: &App) {
+    let help_text = "↑/↓: Scroll | o: Open in browser | q/Esc: Back";
+    let available_width = frame.area().width.saturating_sub(4) as usize;
+    let help_lines = if available_width > 0 {
+        help_text.chars().count().div_ceil(available_width)
+    } else {
+        1
+    };
+    let help_height = (help_lines as u16) + 2;
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0), Constraint::Length(3)])
+        .constraints([Constraint::Min(0), Constraint::Length(help_height)])
         .split(frame.area());
 
     let title = app
@@ -457,17 +514,27 @@ fn draw_article_content(frame: &mut Frame, app: &App) {
         Paragraph::new(visible_lines).block(Block::default().borders(Borders::ALL).title(title));
     frame.render_widget(content_widget, chunks[0]);
 
-    let help = Paragraph::new("↑/↓: Scroll | o: Open in browser | q/Esc: Back")
+    let help = Paragraph::new(help_text)
         .wrap(Wrap { trim: true })
         .block(Block::default().borders(Borders::ALL));
     frame.render_widget(help, chunks[1]);
 }
 
 fn draw_article_list(frame: &mut Frame, app: &App, list_state: &mut ListState) {
-    let bottom_height = if app.input_mode == InputMode::AddingFeed || app.status_message.is_some() {
-        6
+    let help_text =
+        "↑/↓: Navigate | Enter: View | o: Open | r: Reload | a: Add | l: List | q: Quit";
+    let available_width = frame.area().width.saturating_sub(4) as usize;
+    let help_lines = if available_width > 0 {
+        help_text.chars().count().div_ceil(available_width)
     } else {
-        3
+        1
+    };
+    let help_height = (help_lines as u16) + 2;
+
+    let bottom_height = if app.input_mode == InputMode::AddingFeed || app.status_message.is_some() {
+        help_height + 3
+    } else {
+        help_height
     };
 
     let chunks = Layout::default()
@@ -475,6 +542,7 @@ fn draw_article_list(frame: &mut Frame, app: &App, list_state: &mut ListState) {
         .constraints([Constraint::Min(0), Constraint::Length(bottom_height)])
         .split(frame.area());
 
+    let available_width = chunks[0].width.saturating_sub(4) as usize;
     let items: Vec<ListItem> = app
         .articles
         .iter()
@@ -483,12 +551,26 @@ fn draw_article_list(frame: &mut Frame, app: &App, list_state: &mut ListState) {
                 .published
                 .map(|d| d.format("%m/%d").to_string())
                 .unwrap_or_else(|| "     ".to_string());
-            let line1 = Line::from(format!("{} {}", date, a.title));
-            let line2 = Line::from(vec![Span::styled(
-                format!("      [{}]", a.feed_title),
+            let title_max = available_width.saturating_sub(7);
+            let title_lines = wrap_text(&a.title, title_max);
+            let mut lines: Vec<Line> = title_lines
+                .iter()
+                .enumerate()
+                .map(|(i, line)| {
+                    if i == 0 {
+                        Line::from(format!("{} {}", date, line))
+                    } else {
+                        Line::from(format!("      {}", line))
+                    }
+                })
+                .collect();
+            let feed_max = available_width.saturating_sub(8);
+            let feed_title = truncate_str(&a.feed_title, feed_max);
+            lines.push(Line::from(vec![Span::styled(
+                format!("      [{}]", feed_title),
                 Style::default().fg(Color::Gray),
-            )]);
-            ListItem::new(Text::from(vec![line1, line2]))
+            )]));
+            ListItem::new(Text::from(lines))
         })
         .collect();
 
@@ -503,9 +585,9 @@ fn draw_article_list(frame: &mut Frame, app: &App, list_state: &mut ListState) {
         .direction(Direction::Vertical)
         .constraints(
             if app.input_mode == InputMode::AddingFeed || app.status_message.is_some() {
-                vec![Constraint::Length(3), Constraint::Length(3)]
+                vec![Constraint::Length(3), Constraint::Length(help_height)]
             } else {
-                vec![Constraint::Length(3)]
+                vec![Constraint::Length(help_height)]
             },
         )
         .split(chunks[1]);
@@ -528,18 +610,14 @@ fn draw_article_list(frame: &mut Frame, app: &App, list_state: &mut ListState) {
             .block(Block::default().borders(Borders::ALL).title("Status"));
         frame.render_widget(status, bottom_chunks[0]);
 
-        let help = Paragraph::new(
-            "↑/↓: Navigate | Enter: View | o: Open | r: Reload | a: Add | l: List | q: Quit",
-        )
-        .wrap(Wrap { trim: true })
-        .block(Block::default().borders(Borders::ALL));
+        let help = Paragraph::new(help_text)
+            .wrap(Wrap { trim: true })
+            .block(Block::default().borders(Borders::ALL));
         frame.render_widget(help, bottom_chunks[1]);
     } else {
-        let help = Paragraph::new(
-            "↑/↓: Navigate | Enter: View | o: Open | r: Reload | a: Add | l: List | q: Quit",
-        )
-        .wrap(Wrap { trim: true })
-        .block(Block::default().borders(Borders::ALL));
+        let help = Paragraph::new(help_text)
+            .wrap(Wrap { trim: true })
+            .block(Block::default().borders(Borders::ALL));
         frame.render_widget(help, bottom_chunks[0]);
     }
 }
