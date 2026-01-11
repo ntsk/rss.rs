@@ -95,6 +95,24 @@ fn run_event_loop(
                         list_state.select(Some(app.selected));
                     }
                     KeyCode::Enter => {
+                        if let Some(article) = app.selected_article() {
+                            let link = article.link.clone();
+                            app.set_status("Loading...");
+                            terminal.draw(|frame| draw_ui(frame, app, list_state))?;
+                            match feed::fetch_article_content(&link, 80) {
+                                Ok(content) => {
+                                    app.article_content = Some(content);
+                                    app.article_scroll = 0;
+                                    app.input_mode = InputMode::ViewingArticle;
+                                    app.clear_status();
+                                }
+                                Err(e) => {
+                                    app.set_status(format!("Failed to load: {}", e));
+                                }
+                            }
+                        }
+                    }
+                    KeyCode::Char('o') => {
                         if let Some(article) = app.selected_article()
                             && let Err(e) = open::that(&article.link)
                         {
@@ -148,6 +166,27 @@ fn run_event_loop(
                     KeyCode::Char(c) => app.input_buffer.push(c),
                     KeyCode::Backspace => {
                         app.input_buffer.pop();
+                    }
+                    _ => {}
+                },
+                InputMode::ViewingArticle => match key.code {
+                    KeyCode::Esc | KeyCode::Char('q') => {
+                        app.input_mode = InputMode::Normal;
+                        app.article_content = None;
+                        app.article_scroll = 0;
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        app.article_scroll = app.article_scroll.saturating_add(1);
+                    }
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        app.article_scroll = app.article_scroll.saturating_sub(1);
+                    }
+                    KeyCode::Char('o') => {
+                        if let Some(article) = app.selected_article()
+                            && let Err(e) = open::that(&article.link)
+                        {
+                            app.set_status(format!("Failed to open browser: {}", e));
+                        }
                     }
                     _ => {}
                 },
@@ -264,10 +303,10 @@ fn add_feed_and_refresh(app: &mut App, url: &str) {
 }
 
 fn draw_ui(frame: &mut Frame, app: &App, list_state: &mut ListState) {
-    if app.input_mode == InputMode::FeedList {
-        draw_feed_list(frame, app);
-    } else {
-        draw_article_list(frame, app, list_state);
+    match app.input_mode {
+        InputMode::FeedList => draw_feed_list(frame, app),
+        InputMode::ViewingArticle => draw_article_content(frame, app),
+        _ => draw_article_list(frame, app, list_state),
     }
 }
 
@@ -331,6 +370,40 @@ fn draw_feed_list(frame: &mut Frame, app: &App) {
         .block(Block::default().borders(Borders::ALL));
         frame.render_widget(help, bottom_chunks[0]);
     }
+}
+
+fn draw_article_content(frame: &mut Frame, app: &App) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(0), Constraint::Length(3)])
+        .split(frame.area());
+
+    let title = app
+        .selected_article()
+        .map(|a| a.title.clone())
+        .unwrap_or_default();
+
+    let content = app.article_content.as_deref().unwrap_or("");
+    let lines: Vec<&str> = content.lines().collect();
+    let visible_height = chunks[0].height.saturating_sub(2) as usize;
+    let max_scroll = lines.len().saturating_sub(visible_height);
+    let scroll = app.article_scroll.min(max_scroll);
+
+    let visible_lines: String = lines
+        .iter()
+        .skip(scroll)
+        .take(visible_height)
+        .copied()
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let content_widget = Paragraph::new(visible_lines)
+        .block(Block::default().borders(Borders::ALL).title(title));
+    frame.render_widget(content_widget, chunks[0]);
+
+    let help = Paragraph::new("↑/↓: Scroll | o: Open in browser | q/Esc: Back")
+        .block(Block::default().borders(Borders::ALL));
+    frame.render_widget(help, chunks[1]);
 }
 
 fn draw_article_list(frame: &mut Frame, app: &App, list_state: &mut ListState) {
@@ -397,12 +470,12 @@ fn draw_article_list(frame: &mut Frame, app: &App, list_state: &mut ListState) {
         frame.render_widget(status, bottom_chunks[0]);
 
         let help =
-            Paragraph::new("↑/↓: Navigate | Enter: Open | r: Reload | a: Add | l: List | q: Quit")
+            Paragraph::new("↑/↓: Navigate | Enter: View | o: Open | r: Reload | a: Add | l: List | q: Quit")
                 .block(Block::default().borders(Borders::ALL));
         frame.render_widget(help, bottom_chunks[1]);
     } else {
         let help =
-            Paragraph::new("↑/↓: Navigate | Enter: Open | r: Reload | a: Add | l: List | q: Quit")
+            Paragraph::new("↑/↓: Navigate | Enter: View | o: Open | r: Reload | a: Add | l: List | q: Quit")
                 .block(Block::default().borders(Borders::ALL));
         frame.render_widget(help, bottom_chunks[0]);
     }
@@ -418,6 +491,7 @@ pub enum InputMode {
     Normal,
     AddingFeed,
     FeedList,
+    ViewingArticle,
 }
 
 pub struct App {
@@ -435,6 +509,8 @@ pub struct App {
     pub feed_selected: usize,
     pub auto_sort: bool,
     pub feed_status: HashMap<String, bool>,
+    pub article_content: Option<String>,
+    pub article_scroll: usize,
 }
 
 impl App {
@@ -454,6 +530,8 @@ impl App {
             feed_selected: 0,
             auto_sort,
             feed_status: HashMap::new(),
+            article_content: None,
+            article_scroll: 0,
         }
     }
 

@@ -102,6 +102,18 @@ pub fn fetch_articles(url: &str) -> Result<Vec<Article>> {
     parse_feed(&content).with_context(|| format!("Failed to parse feed from {}", url))
 }
 
+pub fn fetch_article_content(url: &str, width: usize) -> Result<String> {
+    let client = create_client()?;
+    let response = client
+        .get(url)
+        .send()
+        .with_context(|| format!("Failed to connect to {}", url))?;
+    let html = response
+        .text()
+        .with_context(|| format!("Failed to read response from {}", url))?;
+    Ok(html2text::from_read(html.as_bytes(), width))
+}
+
 pub fn parse_feed(content: &str) -> Result<Vec<Article>> {
     if let Ok(channel) = content.parse::<rss::Channel>() {
         return parse_rss_channel(&channel);
