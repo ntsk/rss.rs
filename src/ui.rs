@@ -13,6 +13,7 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
 };
 use rayon::prelude::*;
+use std::collections::HashMap;
 use std::io::{self, stdout};
 use std::time::{Duration, Instant};
 
@@ -63,6 +64,7 @@ fn run_event_loop(
             }
             if let Some(result) = fetch_all_articles() {
                 let failure_msg = result.failure_message();
+                app.apply_feed_status(result.feed_status);
                 if !result.articles.is_empty() {
                     app.update_articles(result.articles);
                 }
@@ -176,10 +178,11 @@ fn delete_feed_and_refresh(app: &mut App) {
         if !app.feeds.is_empty() && app.feed_selected >= app.feeds.len() {
             app.feed_selected = app.feeds.len() - 1;
         }
-        if let Some(result) = fetch_all_articles()
-            && !result.articles.is_empty()
-        {
-            app.update_articles(result.articles);
+        if let Some(result) = fetch_all_articles() {
+            app.apply_feed_status(result.feed_status);
+            if !result.articles.is_empty() {
+                app.update_articles(result.articles);
+            }
         }
         app.set_status(format!("Deleted: {}", name));
     }
@@ -227,10 +230,11 @@ fn add_feed_and_refresh(app: &mut App, url: &str) {
             if app.auto_sort {
                 let _ = manager.sort();
             }
-            if let Some(result) = fetch_all_articles()
-                && !result.articles.is_empty()
-            {
-                app.update_articles(result.articles);
+            if let Some(result) = fetch_all_articles() {
+                app.apply_feed_status(result.feed_status);
+                if !result.articles.is_empty() {
+                    app.update_articles(result.articles);
+                }
             }
             let name = title.unwrap_or_else(|| url.to_string());
             app.set_status(format!("Added: {}", name));
@@ -261,11 +265,16 @@ fn draw_feed_list(frame: &mut Frame, app: &App) {
         .feeds
         .iter()
         .map(|f| {
+            let status_icon = match app.get_feed_status(&f.url) {
+                Some(true) => Span::styled("✓ ", Style::default().fg(Color::Green)),
+                Some(false) => Span::styled("✗ ", Style::default().fg(Color::Red)),
+                None => Span::raw("  "),
+            };
             let display = match &f.title {
                 Some(title) => format!("{} ({})", title, f.url),
                 None => f.url.clone(),
             };
-            ListItem::new(display)
+            ListItem::new(Line::from(vec![status_icon, Span::raw(display)]))
         })
         .collect();
 
@@ -384,6 +393,7 @@ fn draw_article_list(frame: &mut Frame, app: &App, list_state: &mut ListState) {
 struct FetchResult {
     articles: Vec<Article>,
     failed_feeds: Vec<String>,
+    feed_status: HashMap<String, bool>,
 }
 
 impl FetchResult {
@@ -410,14 +420,18 @@ fn fetch_all_articles() -> Option<FetchResult> {
         .map(|f| {
             let name = f.title.clone().unwrap_or_else(|| f.url.clone());
             match feed::fetch_articles(&f.url) {
-                Ok(articles) => (articles, None),
-                Err(_) => (vec![], Some(name)),
+                Ok(articles) => (f.url.clone(), articles, None, true),
+                Err(_) => (f.url.clone(), vec![], Some(name), false),
             }
         })
         .collect();
 
-    let mut articles: Vec<Article> = results.iter().flat_map(|(a, _)| a.clone()).collect();
-    let failed_feeds: Vec<String> = results.iter().filter_map(|(_, f)| f.clone()).collect();
+    let mut articles: Vec<Article> = results.iter().flat_map(|(_, a, _, _)| a.clone()).collect();
+    let failed_feeds: Vec<String> = results.iter().filter_map(|(_, _, f, _)| f.clone()).collect();
+    let feed_status: HashMap<String, bool> = results
+        .iter()
+        .map(|(url, _, _, success)| (url.clone(), *success))
+        .collect();
 
     if articles.is_empty() && failed_feeds.is_empty() {
         return None;
@@ -427,6 +441,7 @@ fn fetch_all_articles() -> Option<FetchResult> {
     Some(FetchResult {
         articles,
         failed_feeds,
+        feed_status,
     })
 }
 
@@ -452,6 +467,7 @@ pub struct App {
     pub feeds: Vec<Feed>,
     pub feed_selected: usize,
     pub auto_sort: bool,
+    pub feed_status: HashMap<String, bool>,
 }
 
 impl App {
@@ -470,6 +486,7 @@ impl App {
             feeds: Vec::new(),
             feed_selected: 0,
             auto_sort,
+            feed_status: HashMap::new(),
         }
     }
 
@@ -564,6 +581,14 @@ impl App {
     pub fn close_feed_list(&mut self) {
         self.input_mode = InputMode::Normal;
         self.feeds.clear();
+    }
+
+    pub fn get_feed_status(&self, url: &str) -> Option<bool> {
+        self.feed_status.get(url).copied()
+    }
+
+    pub fn apply_feed_status(&mut self, status: HashMap<String, bool>) {
+        self.feed_status = status;
     }
 }
 
@@ -818,6 +843,7 @@ mod tests {
         let result = FetchResult {
             articles: create_test_articles(3),
             failed_feeds: vec![],
+            feed_status: std::collections::HashMap::new(),
         };
 
         assert!(result.failure_message().is_none());
@@ -828,6 +854,7 @@ mod tests {
         let result = FetchResult {
             articles: vec![],
             failed_feeds: vec!["https://example.com/feed.xml".to_string()],
+            feed_status: std::collections::HashMap::new(),
         };
 
         let message = result.failure_message().unwrap();
@@ -843,10 +870,43 @@ mod tests {
                 "https://example.com/feed1.xml".to_string(),
                 "https://example.com/feed2.xml".to_string(),
             ],
+            feed_status: std::collections::HashMap::new(),
         };
 
         let message = result.failure_message().unwrap();
         assert!(message.contains("Failed"));
         assert!(message.contains("2"));
+    }
+
+    #[test]
+    fn test_feed_status_success() {
+        let articles = create_test_articles(3);
+        let mut app = App::new(articles, Duration::from_secs(300), false);
+        let mut status = std::collections::HashMap::new();
+        status.insert("https://example.com/feed.xml".to_string(), true);
+
+        app.apply_feed_status(status);
+
+        assert_eq!(app.get_feed_status("https://example.com/feed.xml"), Some(true));
+    }
+
+    #[test]
+    fn test_feed_status_failure() {
+        let articles = create_test_articles(3);
+        let mut app = App::new(articles, Duration::from_secs(300), false);
+        let mut status = std::collections::HashMap::new();
+        status.insert("https://example.com/feed.xml".to_string(), false);
+
+        app.apply_feed_status(status);
+
+        assert_eq!(app.get_feed_status("https://example.com/feed.xml"), Some(false));
+    }
+
+    #[test]
+    fn test_feed_status_unknown() {
+        let articles = create_test_articles(3);
+        let app = App::new(articles, Duration::from_secs(300), false);
+
+        assert_eq!(app.get_feed_status("https://example.com/feed.xml"), None);
     }
 }
