@@ -57,6 +57,15 @@ impl SubscriptionManager {
         &self.feeds
     }
 
+    pub fn sort(&mut self) -> Result<()> {
+        self.feeds.sort_by(|a, b| {
+            let a_key = a.title.as_ref().unwrap_or(&a.url);
+            let b_key = b.title.as_ref().unwrap_or(&b.url);
+            a_key.to_lowercase().cmp(&b_key.to_lowercase())
+        });
+        self.save()
+    }
+
     fn save(&self) -> Result<()> {
         let content =
             serde_json::to_string_pretty(&self.feeds).context("Failed to serialize feeds")?;
@@ -193,5 +202,65 @@ mod tests {
         let manager = SubscriptionManager::new(&config_path).unwrap();
         let feeds = manager.list();
         assert_eq!(feeds[0].title, Some("My Blog".to_string()));
+    }
+
+    #[test]
+    fn test_sort_feeds_by_title() {
+        let dir = tempdir().unwrap();
+        let config_path = dir.path().join("feeds.json");
+
+        let mut manager = SubscriptionManager::new(&config_path).unwrap();
+        manager
+            .add("https://c.com", Some("C Blog".to_string()))
+            .unwrap();
+        manager
+            .add("https://a.com", Some("A Blog".to_string()))
+            .unwrap();
+        manager
+            .add("https://b.com", Some("B Blog".to_string()))
+            .unwrap();
+
+        manager.sort().unwrap();
+
+        let feeds = manager.list();
+        assert_eq!(feeds[0].title, Some("A Blog".to_string()));
+        assert_eq!(feeds[1].title, Some("B Blog".to_string()));
+        assert_eq!(feeds[2].title, Some("C Blog".to_string()));
+    }
+
+    #[test]
+    fn test_sort_feeds_by_url_when_no_title() {
+        let dir = tempdir().unwrap();
+        let config_path = dir.path().join("feeds.json");
+
+        let mut manager = SubscriptionManager::new(&config_path).unwrap();
+        manager.add("https://c.com", None).unwrap();
+        manager.add("https://a.com", None).unwrap();
+        manager.add("https://b.com", None).unwrap();
+
+        manager.sort().unwrap();
+
+        let feeds = manager.list();
+        assert_eq!(feeds[0].url, "https://a.com");
+        assert_eq!(feeds[1].url, "https://b.com");
+        assert_eq!(feeds[2].url, "https://c.com");
+    }
+
+    #[test]
+    fn test_sort_persists() {
+        let dir = tempdir().unwrap();
+        let config_path = dir.path().join("feeds.json");
+
+        {
+            let mut manager = SubscriptionManager::new(&config_path).unwrap();
+            manager.add("https://c.com", Some("C".to_string())).unwrap();
+            manager.add("https://a.com", Some("A".to_string())).unwrap();
+            manager.sort().unwrap();
+        }
+
+        let manager = SubscriptionManager::new(&config_path).unwrap();
+        let feeds = manager.list();
+        assert_eq!(feeds[0].title, Some("A".to_string()));
+        assert_eq!(feeds[1].title, Some("C".to_string()));
     }
 }

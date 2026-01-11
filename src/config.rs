@@ -10,6 +10,8 @@ const DEFAULT_REFRESH_INTERVAL: u64 = 300;
 pub struct Settings {
     #[serde(default = "default_refresh_interval")]
     pub refresh_interval_secs: u64,
+    #[serde(default)]
+    pub auto_sort: bool,
 }
 
 fn default_refresh_interval() -> u64 {
@@ -20,6 +22,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             refresh_interval_secs: DEFAULT_REFRESH_INTERVAL,
+            auto_sort: false,
         }
     }
 }
@@ -86,5 +89,12 @@ mod tests {
         let settings = Settings::load().unwrap();
 
         assert_eq!(settings.refresh_interval_secs, 300);
+    }
+
+    #[test]
+    fn test_settings_auto_sort_default_false() {
+        let settings = Settings::default();
+
+        assert!(!settings.auto_sort);
     }
 }
