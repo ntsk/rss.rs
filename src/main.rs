@@ -2,13 +2,13 @@ mod cli;
 mod config;
 mod feed;
 mod opml;
+mod service;
 mod subscription;
 mod ui;
 
 use anyhow::Result;
 use clap::Parser;
 use cli::{Cli, Commands};
-use rayon::prelude::*;
 use subscription::SubscriptionManager;
 use tracing::{debug, info, warn};
 use tracing_subscriber::EnvFilter;
@@ -94,9 +94,10 @@ fn run() -> Result<()> {
             if list {
                 println!("{}", settings.display());
             } else if let (Some(k), Some(v)) = (key, value) {
-                settings.set(&k, &v)?;
+                let config_key: config::ConfigKey = k.parse()?;
+                settings.set(config_key, &v)?;
                 settings.save()?;
-                println!("Set {} = {}", k, v);
+                println!("Set {} = {}", config_key, v);
             } else {
                 println!("Usage: rss config --list");
                 println!("       rss config <key> <value>");
@@ -123,35 +124,26 @@ fn show_articles(manager: &SubscriptionManager) -> Result<()> {
     info!("Fetching {} feed(s)", feeds.len());
     let settings = config::Settings::load()?;
 
-    let results: Vec<_> = feeds
-        .par_iter()
-        .map(|f| (f.url.clone(), feed::fetch_articles(&f.url)))
-        .collect();
+    let result = service::fetch_all_feeds(manager);
 
-    let mut articles: Vec<feed::Article> = Vec::new();
-    for (url, result) in results {
-        match result {
-            Ok(mut fetched) => {
-                debug!("Fetched {} articles from {}", fetched.len(), url);
-                articles.append(&mut fetched);
-            }
-            Err(e) => {
-                warn!("Failed to fetch {}: {}", url, e);
-                eprintln!("Failed to fetch {}: {}", url, e);
-            }
-        }
+    for name in &result.failed_feeds {
+        warn!("Failed to fetch: {}", name);
+        eprintln!("Failed to fetch: {}", name);
     }
 
-    info!("Total {} articles", articles.len());
+    debug!(
+        "Fetched {} articles, {} failed",
+        result.articles.len(),
+        result.failed_feeds.len()
+    );
+    info!("Total {} articles", result.articles.len());
 
-    if articles.is_empty() {
+    if result.articles.is_empty() {
         println!("No articles found.");
         return Ok(());
     }
 
-    articles.sort_by(|a, b| b.published.cmp(&a.published));
-
-    ui::run_app(articles, &settings)?;
+    ui::run_app(result.articles, &settings)?;
 
     Ok(())
 }

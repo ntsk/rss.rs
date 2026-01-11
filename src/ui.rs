@@ -1,5 +1,6 @@
 use crate::config::Settings;
 use crate::feed::{self, Article};
+use crate::service::{self, FetchResult};
 use crate::subscription::{Feed, SubscriptionManager};
 use anyhow::Result;
 use arboard::Clipboard;
@@ -12,7 +13,6 @@ use ratatui::{
     prelude::*,
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
 };
-use rayon::prelude::*;
 use std::collections::HashMap;
 use std::io::{self, stdout};
 use std::time::{Duration, Instant};
@@ -92,8 +92,10 @@ fn run_event_loop(
                         list_state.select(Some(app.selected));
                     }
                     KeyCode::Enter => {
-                        if let Some(article) = app.selected_article() {
-                            let _ = open::that(&article.link);
+                        if let Some(article) = app.selected_article()
+                            && let Err(e) = open::that(&article.link)
+                        {
+                            app.set_status(format!("Failed to open browser: {}", e));
                         }
                     }
                     KeyCode::Char('r') => app.request_reload(),
@@ -106,8 +108,10 @@ fn run_event_loop(
                     KeyCode::Down | KeyCode::Char('j') => app.select_next_feed(),
                     KeyCode::Up | KeyCode::Char('k') => app.select_previous_feed(),
                     KeyCode::Enter => {
-                        if let Some(feed) = app.feeds.get(app.feed_selected) {
-                            let _ = open::that(&feed.url);
+                        if let Some(feed) = app.feeds.get(app.feed_selected)
+                            && let Err(e) = open::that(&feed.url)
+                        {
+                            app.set_status(format!("Failed to open browser: {}", e));
                         }
                     }
                     KeyCode::Char('a') => app.start_adding_feed(),
@@ -152,6 +156,33 @@ fn run_event_loop(
     Ok(())
 }
 
+fn get_manager(app: &mut App) -> Option<SubscriptionManager> {
+    let config_path = match crate::config::get_config_path() {
+        Ok(p) => p,
+        Err(e) => {
+            app.set_status(format!("Config error: {}", e));
+            return None;
+        }
+    };
+    match SubscriptionManager::new(&config_path) {
+        Ok(m) => Some(m),
+        Err(e) => {
+            app.set_status(format!("Load error: {}", e));
+            None
+        }
+    }
+}
+
+fn refresh_after_change(app: &mut App, manager: &SubscriptionManager) {
+    app.feeds = manager.list().to_vec();
+    if let Some(result) = fetch_all_articles() {
+        app.apply_feed_status(result.feed_status);
+        if !result.articles.is_empty() {
+            app.update_articles(result.articles);
+        }
+    }
+}
+
 fn delete_feed_and_refresh(app: &mut App) {
     if app.feeds.is_empty() {
         return;
@@ -161,64 +192,44 @@ fn delete_feed_and_refresh(app: &mut App) {
     let url = feed.url.clone();
     let name = feed.title.clone().unwrap_or_else(|| url.clone());
 
-    let config_path = match crate::config::get_config_path() {
-        Ok(p) => p,
-        Err(_) => return,
-    };
-    let mut manager = match SubscriptionManager::new(&config_path) {
-        Ok(m) => m,
-        Err(_) => return,
+    let Some(mut manager) = get_manager(app) else {
+        return;
     };
 
     if manager.delete(&url).is_ok() {
-        if app.auto_sort {
-            let _ = manager.sort();
+        if app.auto_sort
+            && let Err(e) = manager.sort()
+        {
+            app.set_status(format!("Sort failed: {}", e));
         }
-        app.feeds = manager.list().to_vec();
+        refresh_after_change(app, &manager);
         if !app.feeds.is_empty() && app.feed_selected >= app.feeds.len() {
             app.feed_selected = app.feeds.len() - 1;
-        }
-        if let Some(result) = fetch_all_articles() {
-            app.apply_feed_status(result.feed_status);
-            if !result.articles.is_empty() {
-                app.update_articles(result.articles);
-            }
         }
         app.set_status(format!("Deleted: {}", name));
     }
 }
 
 fn sort_feeds(app: &mut App) {
-    let config_path = match crate::config::get_config_path() {
-        Ok(p) => p,
-        Err(_) => return,
-    };
-    let mut manager = match SubscriptionManager::new(&config_path) {
-        Ok(m) => m,
-        Err(_) => return,
+    let Some(mut manager) = get_manager(app) else {
+        return;
     };
 
-    if manager.sort().is_ok() {
-        app.feeds = manager.list().to_vec();
-        app.feed_selected = 0;
-        app.set_status("Sorted");
+    match manager.sort() {
+        Ok(_) => {
+            app.feeds = manager.list().to_vec();
+            app.feed_selected = 0;
+            app.set_status("Sorted");
+        }
+        Err(e) => {
+            app.set_status(format!("Sort failed: {}", e));
+        }
     }
 }
 
 fn add_feed_and_refresh(app: &mut App, url: &str) {
-    let config_path = match crate::config::get_config_path() {
-        Ok(p) => p,
-        Err(_) => {
-            app.set_status("Failed to get config path");
-            return;
-        }
-    };
-    let mut manager = match SubscriptionManager::new(&config_path) {
-        Ok(m) => m,
-        Err(_) => {
-            app.set_status("Failed to load subscriptions");
-            return;
-        }
+    let Some(mut manager) = get_manager(app) else {
+        return;
     };
 
     let title = feed::fetch_articles(url)
@@ -227,15 +238,12 @@ fn add_feed_and_refresh(app: &mut App, url: &str) {
 
     match manager.add(url, title.clone()) {
         Ok(_) => {
-            if app.auto_sort {
-                let _ = manager.sort();
+            if app.auto_sort
+                && let Err(e) = manager.sort()
+            {
+                app.set_status(format!("Sort failed: {}", e));
             }
-            if let Some(result) = fetch_all_articles() {
-                app.apply_feed_status(result.feed_status);
-                if !result.articles.is_empty() {
-                    app.update_articles(result.articles);
-                }
-            }
+            refresh_after_change(app, &manager);
             let name = title.unwrap_or_else(|| url.to_string());
             app.set_status(format!("Added: {}", name));
         }
@@ -390,62 +398,8 @@ fn draw_article_list(frame: &mut Frame, app: &App, list_state: &mut ListState) {
     }
 }
 
-struct FetchResult {
-    articles: Vec<Article>,
-    failed_feeds: Vec<String>,
-    feed_status: HashMap<String, bool>,
-}
-
-impl FetchResult {
-    fn failure_message(&self) -> Option<String> {
-        if self.failed_feeds.is_empty() {
-            return None;
-        }
-
-        if self.failed_feeds.len() == 1 {
-            Some(format!("Failed: {}", self.failed_feeds[0]))
-        } else {
-            Some(format!("Failed: {} feeds", self.failed_feeds.len()))
-        }
-    }
-}
-
 fn fetch_all_articles() -> Option<FetchResult> {
-    let config_path = crate::config::get_config_path().ok()?;
-    let manager = SubscriptionManager::new(&config_path).ok()?;
-    let feeds = manager.list();
-
-    let results: Vec<_> = feeds
-        .par_iter()
-        .map(|f| {
-            let name = f.title.clone().unwrap_or_else(|| f.url.clone());
-            match feed::fetch_articles(&f.url) {
-                Ok(articles) => (f.url.clone(), articles, None, true),
-                Err(_) => (f.url.clone(), vec![], Some(name), false),
-            }
-        })
-        .collect();
-
-    let mut articles: Vec<Article> = results.iter().flat_map(|(_, a, _, _)| a.clone()).collect();
-    let failed_feeds: Vec<String> = results
-        .iter()
-        .filter_map(|(_, _, f, _)| f.clone())
-        .collect();
-    let feed_status: HashMap<String, bool> = results
-        .iter()
-        .map(|(url, _, _, success)| (url.clone(), *success))
-        .collect();
-
-    if articles.is_empty() && failed_feeds.is_empty() {
-        return None;
-    }
-
-    articles.sort_by(|a, b| b.published.cmp(&a.published));
-    Some(FetchResult {
-        articles,
-        failed_feeds,
-        feed_status,
-    })
+    service::fetch_feeds_from_config()
 }
 
 #[derive(Debug, Default, PartialEq)]
@@ -600,6 +554,8 @@ mod tests {
     use super::*;
     use chrono::Utc;
 
+    const TEST_REFRESH_INTERVAL: Duration = Duration::from_secs(300);
+
     fn create_test_articles(count: usize) -> Vec<Article> {
         (0..count)
             .map(|i| Article {
@@ -614,7 +570,7 @@ mod tests {
     #[test]
     fn test_new_app_with_articles() {
         let articles = create_test_articles(3);
-        let app = App::new(articles.clone(), Duration::from_secs(300), false);
+        let app = App::new(articles.clone(), TEST_REFRESH_INTERVAL, false);
 
         assert_eq!(app.articles.len(), 3);
         assert_eq!(app.selected, 0);
@@ -624,7 +580,7 @@ mod tests {
     #[test]
     fn test_select_next() {
         let articles = create_test_articles(3);
-        let mut app = App::new(articles, Duration::from_secs(300), false);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
 
         app.select_next();
         assert_eq!(app.selected, 1);
@@ -639,7 +595,7 @@ mod tests {
     #[test]
     fn test_select_previous() {
         let articles = create_test_articles(3);
-        let mut app = App::new(articles, Duration::from_secs(300), false);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
         app.selected = 2;
 
         app.select_previous();
@@ -655,7 +611,7 @@ mod tests {
     #[test]
     fn test_quit() {
         let articles = create_test_articles(3);
-        let mut app = App::new(articles, Duration::from_secs(300), false);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
 
         app.quit();
 
@@ -665,7 +621,7 @@ mod tests {
     #[test]
     fn test_request_reload() {
         let articles = create_test_articles(3);
-        let mut app = App::new(articles, Duration::from_secs(300), false);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
 
         app.request_reload();
 
@@ -684,7 +640,7 @@ mod tests {
     #[test]
     fn test_should_not_auto_refresh_before_interval() {
         let articles = create_test_articles(3);
-        let app = App::new(articles, Duration::from_secs(300), false);
+        let app = App::new(articles, TEST_REFRESH_INTERVAL, false);
 
         assert!(!app.should_auto_refresh());
     }
@@ -692,7 +648,7 @@ mod tests {
     #[test]
     fn test_update_articles_preserves_selection_if_valid() {
         let articles = create_test_articles(5);
-        let mut app = App::new(articles, Duration::from_secs(300), false);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
         app.selected = 2;
 
         let new_articles = create_test_articles(5);
@@ -704,7 +660,7 @@ mod tests {
     #[test]
     fn test_update_articles_adjusts_selection_if_out_of_bounds() {
         let articles = create_test_articles(5);
-        let mut app = App::new(articles, Duration::from_secs(300), false);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
         app.selected = 4;
 
         let new_articles = create_test_articles(2);
@@ -716,7 +672,7 @@ mod tests {
     #[test]
     fn test_selected_article() {
         let articles = create_test_articles(3);
-        let mut app = App::new(articles, Duration::from_secs(300), false);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
         app.selected = 1;
 
         let article = app.selected_article().unwrap();
@@ -725,7 +681,7 @@ mod tests {
 
     #[test]
     fn test_selected_article_empty_list() {
-        let app = App::new(vec![], Duration::from_secs(300), false);
+        let app = App::new(vec![], TEST_REFRESH_INTERVAL, false);
 
         assert!(app.selected_article().is_none());
     }
@@ -733,7 +689,7 @@ mod tests {
     #[test]
     fn test_start_adding_feed() {
         let articles = create_test_articles(3);
-        let mut app = App::new(articles, Duration::from_secs(300), false);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
         app.input_buffer = "old".to_string();
         app.status_message = Some("old message".to_string());
 
@@ -747,7 +703,7 @@ mod tests {
     #[test]
     fn test_cancel_input() {
         let articles = create_test_articles(3);
-        let mut app = App::new(articles, Duration::from_secs(300), false);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
         app.input_mode = InputMode::AddingFeed;
         app.input_buffer = "https://example.com".to_string();
 
@@ -760,7 +716,7 @@ mod tests {
     #[test]
     fn test_select_next_feed() {
         let articles = create_test_articles(3);
-        let mut app = App::new(articles, Duration::from_secs(300), false);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
         app.feeds = vec![
             Feed {
                 url: "https://example.com/1".to_string(),
@@ -782,7 +738,7 @@ mod tests {
     #[test]
     fn test_select_previous_feed() {
         let articles = create_test_articles(3);
-        let mut app = App::new(articles, Duration::from_secs(300), false);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
         app.feeds = vec![
             Feed {
                 url: "https://example.com/1".to_string(),
@@ -805,7 +761,7 @@ mod tests {
     #[test]
     fn test_close_feed_list() {
         let articles = create_test_articles(3);
-        let mut app = App::new(articles, Duration::from_secs(300), false);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
         app.input_mode = InputMode::FeedList;
         app.feeds = vec![Feed {
             url: "https://example.com".to_string(),
@@ -821,7 +777,7 @@ mod tests {
     #[test]
     fn test_set_status() {
         let articles = create_test_articles(3);
-        let mut app = App::new(articles, Duration::from_secs(300), false);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
 
         app.set_status("Test message");
 
@@ -832,7 +788,7 @@ mod tests {
     #[test]
     fn test_clear_status() {
         let articles = create_test_articles(3);
-        let mut app = App::new(articles, Duration::from_secs(300), false);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
         app.set_status("Test message");
 
         app.clear_status();
@@ -842,49 +798,9 @@ mod tests {
     }
 
     #[test]
-    fn test_fetch_result_no_failures() {
-        let result = FetchResult {
-            articles: create_test_articles(3),
-            failed_feeds: vec![],
-            feed_status: std::collections::HashMap::new(),
-        };
-
-        assert!(result.failure_message().is_none());
-    }
-
-    #[test]
-    fn test_fetch_result_single_failure() {
-        let result = FetchResult {
-            articles: vec![],
-            failed_feeds: vec!["https://example.com/feed.xml".to_string()],
-            feed_status: std::collections::HashMap::new(),
-        };
-
-        let message = result.failure_message().unwrap();
-        assert!(message.contains("Failed"));
-        assert!(message.contains("https://example.com/feed.xml"));
-    }
-
-    #[test]
-    fn test_fetch_result_multiple_failures() {
-        let result = FetchResult {
-            articles: vec![],
-            failed_feeds: vec![
-                "https://example.com/feed1.xml".to_string(),
-                "https://example.com/feed2.xml".to_string(),
-            ],
-            feed_status: std::collections::HashMap::new(),
-        };
-
-        let message = result.failure_message().unwrap();
-        assert!(message.contains("Failed"));
-        assert!(message.contains("2"));
-    }
-
-    #[test]
     fn test_feed_status_success() {
         let articles = create_test_articles(3);
-        let mut app = App::new(articles, Duration::from_secs(300), false);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
         let mut status = std::collections::HashMap::new();
         status.insert("https://example.com/feed.xml".to_string(), true);
 
@@ -899,7 +815,7 @@ mod tests {
     #[test]
     fn test_feed_status_failure() {
         let articles = create_test_articles(3);
-        let mut app = App::new(articles, Duration::from_secs(300), false);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
         let mut status = std::collections::HashMap::new();
         status.insert("https://example.com/feed.xml".to_string(), false);
 
@@ -914,7 +830,7 @@ mod tests {
     #[test]
     fn test_feed_status_unknown() {
         let articles = create_test_articles(3);
-        let app = App::new(articles, Duration::from_secs(300), false);
+        let app = App::new(articles, TEST_REFRESH_INTERVAL, false);
 
         assert_eq!(app.get_feed_status("https://example.com/feed.xml"), None);
     }
