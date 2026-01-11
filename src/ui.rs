@@ -145,7 +145,7 @@ fn run_event_loop(
                     _ => {}
                 },
                 InputMode::FeedList => match key.code {
-                    KeyCode::Esc | KeyCode::Char('h') => app.close_feed_list(),
+                    KeyCode::Esc => app.close_feed_list(),
                     KeyCode::Down | KeyCode::Char('j') => app.select_next_feed(),
                     KeyCode::Up | KeyCode::Char('k') => app.select_previous_feed(),
                     KeyCode::Char('g') => app.select_first_feed(),
@@ -204,7 +204,7 @@ fn run_event_loop(
                     _ => {}
                 },
                 InputMode::ViewingArticle => match key.code {
-                    KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('h') => {
+                    KeyCode::Esc | KeyCode::Char('q') => {
                         app.input_mode = InputMode::Normal;
                         app.article_content = None;
                         app.article_scroll = 0;

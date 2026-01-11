@@ -128,7 +128,7 @@ rss config refresh_interval_secs 600
 | `Ctrl+f` | Scroll down full page |
 | `Ctrl+b` | Scroll up full page |
 | `o` | Open in browser |
-| `h` / `q` / `Esc` | Back to list |
+| `q` / `Esc` | Back to list |
 
 ### Feed List Mode
 
@@ -144,7 +144,7 @@ rss config refresh_interval_secs 600
 | `a` | Add new feed |
 | `d` | Delete selected feed |
 | `s` | Sort feeds |
-| `h` / `Esc` | Back to articles |
+| `Esc` | Back to articles |
 
 ## Configuration
 
