@@ -72,7 +72,19 @@ rss export feeds.opml
 | `↓` / `j` | Move down |
 | `Enter` | Open article in browser |
 | `r` | Reload feeds |
+| `a` | Add new feed |
+| `l` | Show feed list |
+| `Ctrl+V` / `Cmd+V` | Paste URL (in add mode) |
 | `q` / `Esc` | Quit |
+
+### Feed List Mode
+
+| Key | Action |
+|-----|--------|
+| `↑` / `k` | Move up |
+| `↓` / `j` | Move down |
+| `d` | Delete selected feed |
+| `Esc` | Back to articles |
 
 ## Configuration
 

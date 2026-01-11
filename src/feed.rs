@@ -24,6 +24,7 @@ fn create_client() -> Result<reqwest::blocking::Client> {
     reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
         .user_agent(USER_AGENT)
+        .no_proxy()
         .build()
         .map_err(Into::into)
 }
@@ -60,7 +61,14 @@ fn parse_rss_channel(channel: &rss::Channel) -> Result<Vec<Article>> {
         .filter_map(|item| {
             let title = sanitize_text(item.title()?);
             let link = item.link()?.to_string();
-            let published = item.pub_date().and_then(parse_date);
+            let published = item
+                .pub_date()
+                .and_then(parse_date)
+                .or_else(|| {
+                    item.dublin_core_ext()
+                        .and_then(|dc| dc.dates().first())
+                        .and_then(|d| parse_date(d))
+                });
 
             Some(Article {
                 title,
@@ -108,7 +116,10 @@ fn parse_atom_feed(feed: &atom_syndication::Feed) -> Result<Vec<Article>> {
         .filter_map(|entry| {
             let title = sanitize_text(entry.title());
             let link = entry.links().first()?.href().to_string();
-            let published = entry.updated().with_timezone(&Utc);
+            let published = entry
+                .published()
+                .unwrap_or_else(|| entry.updated())
+                .with_timezone(&Utc);
 
             Some(Article {
                 title,
@@ -208,6 +219,45 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_atom_prefers_published_over_updated() {
+        let atom_with_published = r#"<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Test Feed</title>
+  <entry>
+    <title>Test Entry</title>
+    <link href="https://example.com/entry"/>
+    <published>2025-01-01T10:00:00Z</published>
+    <updated>2025-01-10T15:00:00Z</updated>
+  </entry>
+</feed>"#;
+
+        let articles = parse_rss(atom_with_published, "https://example.com/atom.xml").unwrap();
+
+        assert_eq!(articles.len(), 1);
+        let published = articles[0].published.unwrap();
+        assert_eq!(published.format("%Y-%m-%d").to_string(), "2025-01-01");
+    }
+
+    #[test]
+    fn test_parse_atom_falls_back_to_updated_when_no_published() {
+        let atom_without_published = r#"<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Test Feed</title>
+  <entry>
+    <title>Test Entry</title>
+    <link href="https://example.com/entry"/>
+    <updated>2025-01-10T15:00:00Z</updated>
+  </entry>
+</feed>"#;
+
+        let articles = parse_rss(atom_without_published, "https://example.com/atom.xml").unwrap();
+
+        assert_eq!(articles.len(), 1);
+        let published = articles[0].published.unwrap();
+        assert_eq!(published.format("%Y-%m-%d").to_string(), "2025-01-10");
+    }
+
+    #[test]
     fn test_parse_rss_removes_newlines_from_titles() {
         let rss_with_newlines = r#"<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
@@ -246,5 +296,32 @@ Entry</title>
 
         assert_eq!(articles[0].feed_title, "Sample Atom");
         assert_eq!(articles[0].title, "Atom Entry");
+    }
+
+    #[test]
+    fn test_parse_rss10_with_dc_date() {
+        let rss10 = r#"<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF
+ xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+ xmlns="http://purl.org/rss/1.0/"
+ xmlns:dc="http://purl.org/dc/elements/1.1/"
+>
+<channel>
+<title>Sample RDF Feed</title>
+<link>https://example.com</link>
+</channel>
+<item rdf:about="https://example.com/item1">
+<title>RDF Item</title>
+<link>https://example.com/item1</link>
+<dc:date>2025-01-11T12:00:00Z</dc:date>
+</item>
+</rdf:RDF>"#;
+
+        let articles = parse_rss(rss10, "https://example.com/rdf.rss").unwrap();
+
+        assert_eq!(articles.len(), 1);
+        assert_eq!(articles[0].title, "RDF Item");
+        assert_eq!(articles[0].link, "https://example.com/item1");
+        assert!(articles[0].published.is_some());
     }
 }
