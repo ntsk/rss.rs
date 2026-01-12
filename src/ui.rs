@@ -92,174 +92,174 @@ fn run_event_loop(
                 }
                 Event::Key(key) if key.kind == KeyEventKind::Press => match app.input_mode {
                     InputMode::Normal => match key.code {
-                    KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        app.quit()
-                    }
-                    KeyCode::Char('q') => app.quit(),
-                    KeyCode::Esc => {
-                        if app.filter_feed_url.is_some() {
-                            app.filter_feed_url = None;
-                            app.selected = 0;
+                        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            app.quit()
                         }
-                    }
-                    KeyCode::Down | KeyCode::Char('j') => {
-                        app.select_next();
-                        list_state.select(Some(app.selected));
-                    }
-                    KeyCode::Up | KeyCode::Char('k') => {
-                        app.select_previous();
-                        list_state.select(Some(app.selected));
-                    }
-                    KeyCode::Char('g') => {
-                        app.select_first();
-                        list_state.select(Some(app.selected));
-                    }
-                    KeyCode::Char('G') => {
-                        app.select_last();
-                        list_state.select(Some(app.selected));
-                    }
-                    KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        for _ in 0..10 {
+                        KeyCode::Char('q') => app.quit(),
+                        KeyCode::Esc => {
+                            if app.filter_feed_url.is_some() {
+                                app.filter_feed_url = None;
+                                app.selected = 0;
+                            }
+                        }
+                        KeyCode::Down | KeyCode::Char('j') => {
                             app.select_next();
+                            list_state.select(Some(app.selected));
                         }
-                        list_state.select(Some(app.selected));
-                    }
-                    KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        for _ in 0..10 {
+                        KeyCode::Up | KeyCode::Char('k') => {
                             app.select_previous();
+                            list_state.select(Some(app.selected));
                         }
-                        list_state.select(Some(app.selected));
-                    }
-                    KeyCode::Enter => {
-                        if let Some(article) = app.selected_article() {
-                            let link = article.link.clone();
-                            let width = terminal.size()?.width.saturating_sub(4) as usize;
-                            app.set_status("Loading...");
-                            terminal.draw(|frame| draw_ui(frame, app, list_state))?;
-                            match feed::fetch_article_content(&link, width.max(40)) {
-                                Ok(content) => {
-                                    app.article_content = Some(content);
-                                    app.article_scroll = 0;
-                                    app.input_mode = InputMode::ViewingArticle;
-                                    app.clear_status();
-                                }
-                                Err(e) => {
-                                    app.set_status(format!("Failed to load: {}", e));
+                        KeyCode::Char('g') => {
+                            app.select_first();
+                            list_state.select(Some(app.selected));
+                        }
+                        KeyCode::Char('G') => {
+                            app.select_last();
+                            list_state.select(Some(app.selected));
+                        }
+                        KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            for _ in 0..10 {
+                                app.select_next();
+                            }
+                            list_state.select(Some(app.selected));
+                        }
+                        KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            for _ in 0..10 {
+                                app.select_previous();
+                            }
+                            list_state.select(Some(app.selected));
+                        }
+                        KeyCode::Enter => {
+                            if let Some(article) = app.selected_article() {
+                                let link = article.link.clone();
+                                let width = terminal.size()?.width.saturating_sub(4) as usize;
+                                app.set_status("Loading...");
+                                terminal.draw(|frame| draw_ui(frame, app, list_state))?;
+                                match feed::fetch_article_content(&link, width.max(40)) {
+                                    Ok(content) => {
+                                        app.article_content = Some(content);
+                                        app.article_scroll = 0;
+                                        app.input_mode = InputMode::ViewingArticle;
+                                        app.clear_status();
+                                    }
+                                    Err(e) => {
+                                        app.set_status(format!("Failed to load: {}", e));
+                                    }
                                 }
                             }
                         }
-                    }
-                    KeyCode::Char('o') => {
-                        if let Some(article) = app.selected_article()
-                            && let Err(e) = open::that(&article.link)
-                        {
-                            app.set_status(format!("Failed to open browser: {}", e));
+                        KeyCode::Char('o') => {
+                            if let Some(article) = app.selected_article()
+                                && let Err(e) = open::that(&article.link)
+                            {
+                                app.set_status(format!("Failed to open browser: {}", e));
+                            }
                         }
-                    }
-                    KeyCode::Char('r') => app.request_reload(),
-                    KeyCode::Char('a') => app.start_adding_feed(),
-                    KeyCode::Char('l') => app.show_feed_list(),
-                    _ => {}
-                },
-                InputMode::FeedList => match key.code {
-                    KeyCode::Esc => app.close_feed_list(),
-                    KeyCode::Down | KeyCode::Char('j') => app.select_next_feed(),
-                    KeyCode::Up | KeyCode::Char('k') => app.select_previous_feed(),
-                    KeyCode::Char('g') => app.select_first_feed(),
-                    KeyCode::Char('G') => app.select_last_feed(),
-                    KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        for _ in 0..10 {
-                            app.select_previous_feed();
+                        KeyCode::Char('r') => app.request_reload(),
+                        KeyCode::Char('a') => app.start_adding_feed(),
+                        KeyCode::Char('l') => app.show_feed_list(),
+                        _ => {}
+                    },
+                    InputMode::FeedList => match key.code {
+                        KeyCode::Esc => app.close_feed_list(),
+                        KeyCode::Down | KeyCode::Char('j') => app.select_next_feed(),
+                        KeyCode::Up | KeyCode::Char('k') => app.select_previous_feed(),
+                        KeyCode::Char('g') => app.select_first_feed(),
+                        KeyCode::Char('G') => app.select_last_feed(),
+                        KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            for _ in 0..10 {
+                                app.select_previous_feed();
+                            }
                         }
-                    }
-                    KeyCode::Enter => {
-                        app.filter_by_selected_feed();
-                    }
-                    KeyCode::Char('o') => {
-                        if let Some(feed) = app.feeds.get(app.feed_selected)
-                            && let Err(e) = open::that(&feed.url)
-                        {
-                            app.set_status(format!("Failed to open browser: {}", e));
+                        KeyCode::Enter => {
+                            app.filter_by_selected_feed();
                         }
-                    }
-                    KeyCode::Char('a') => app.start_adding_feed(),
-                    KeyCode::Char('d') if !key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        delete_feed_and_refresh(app)
-                    }
-                    KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        for _ in 0..10 {
-                            app.select_next_feed();
+                        KeyCode::Char('o') => {
+                            if let Some(feed) = app.feeds.get(app.feed_selected)
+                                && let Err(e) = open::that(&feed.url)
+                            {
+                                app.set_status(format!("Failed to open browser: {}", e));
+                            }
                         }
-                    }
-                    KeyCode::Char('s') => sort_feeds(app),
-                    _ => {}
-                },
-                InputMode::AddingFeed => match key.code {
-                    KeyCode::Esc => app.cancel_input(),
-                    KeyCode::Enter => {
-                        if !app.input_buffer.is_empty() {
-                            let url = app.input_buffer.clone();
+                        KeyCode::Char('a') => app.start_adding_feed(),
+                        KeyCode::Char('d') if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            delete_feed_and_refresh(app)
+                        }
+                        KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            for _ in 0..10 {
+                                app.select_next_feed();
+                            }
+                        }
+                        KeyCode::Char('s') => sort_feeds(app),
+                        _ => {}
+                    },
+                    InputMode::AddingFeed => match key.code {
+                        KeyCode::Esc => app.cancel_input(),
+                        KeyCode::Enter => {
+                            if !app.input_buffer.is_empty() {
+                                let url = app.input_buffer.clone();
+                                app.input_mode = InputMode::Normal;
+                                app.input_buffer.clear();
+                                add_feed_and_refresh(app, &url);
+                                list_state.select(Some(app.selected));
+                            } else {
+                                app.input_mode = InputMode::Normal;
+                                app.input_buffer.clear();
+                            }
+                        }
+                        KeyCode::Char('v')
+                            if key.modifiers.contains(KeyModifiers::CONTROL)
+                                || key.modifiers.contains(KeyModifiers::SUPER) => {}
+                        KeyCode::Char('p') => {
+                            paste_from_clipboard(app);
+                        }
+                        KeyCode::Char(c) => app.input_buffer.push(c),
+                        KeyCode::Backspace => {
+                            app.input_buffer.pop();
+                        }
+                        _ => {}
+                    },
+                    InputMode::ViewingArticle => match key.code {
+                        KeyCode::Esc | KeyCode::Char('q') => {
                             app.input_mode = InputMode::Normal;
-                            app.input_buffer.clear();
-                            add_feed_and_refresh(app, &url);
-                            list_state.select(Some(app.selected));
-                        } else {
-                            app.input_mode = InputMode::Normal;
-                            app.input_buffer.clear();
+                            app.article_content = None;
+                            app.article_scroll = 0;
                         }
-                    }
-                    KeyCode::Char('v')
-                        if key.modifiers.contains(KeyModifiers::CONTROL)
-                            || key.modifiers.contains(KeyModifiers::SUPER) => {}
-                    KeyCode::Char('p') => {
-                        paste_from_clipboard(app);
-                    }
-                    KeyCode::Char(c) => app.input_buffer.push(c),
-                    KeyCode::Backspace => {
-                        app.input_buffer.pop();
-                    }
-                    _ => {}
-                },
-                InputMode::ViewingArticle => match key.code {
-                    KeyCode::Esc | KeyCode::Char('q') => {
-                        app.input_mode = InputMode::Normal;
-                        app.article_content = None;
-                        app.article_scroll = 0;
-                    }
-                    KeyCode::Down | KeyCode::Char('j') => {
-                        app.article_scroll = app.article_scroll.saturating_add(1);
-                    }
-                    KeyCode::Up | KeyCode::Char('k') => {
-                        app.article_scroll = app.article_scroll.saturating_sub(1);
-                    }
-                    KeyCode::Char('g') => {
-                        app.article_scroll = 0;
-                    }
-                    KeyCode::Char('G') => {
-                        app.article_scroll = usize::MAX;
-                    }
-                    KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        app.article_scroll = app.article_scroll.saturating_add(15);
-                    }
-                    KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        app.article_scroll = app.article_scroll.saturating_sub(15);
-                    }
-                    KeyCode::Char('f') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        app.article_scroll = app.article_scroll.saturating_add(30);
-                    }
-                    KeyCode::Char('b') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        app.article_scroll = app.article_scroll.saturating_sub(30);
-                    }
-                    KeyCode::Char('o') => {
-                        if let Some(article) = app.selected_article()
-                            && let Err(e) = open::that(&article.link)
-                        {
-                            app.set_status(format!("Failed to open browser: {}", e));
+                        KeyCode::Down | KeyCode::Char('j') => {
+                            app.article_scroll = app.article_scroll.saturating_add(1);
                         }
-                    }
-                    _ => {}
+                        KeyCode::Up | KeyCode::Char('k') => {
+                            app.article_scroll = app.article_scroll.saturating_sub(1);
+                        }
+                        KeyCode::Char('g') => {
+                            app.article_scroll = 0;
+                        }
+                        KeyCode::Char('G') => {
+                            app.article_scroll = usize::MAX;
+                        }
+                        KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            app.article_scroll = app.article_scroll.saturating_add(15);
+                        }
+                        KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            app.article_scroll = app.article_scroll.saturating_sub(15);
+                        }
+                        KeyCode::Char('f') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            app.article_scroll = app.article_scroll.saturating_add(30);
+                        }
+                        KeyCode::Char('b') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            app.article_scroll = app.article_scroll.saturating_sub(30);
+                        }
+                        KeyCode::Char('o') => {
+                            if let Some(article) = app.selected_article()
+                                && let Err(e) = open::that(&article.link)
+                            {
+                                app.set_status(format!("Failed to open browser: {}", e));
+                            }
+                        }
+                        _ => {}
+                    },
                 },
-                }
                 _ => {}
             }
         }
@@ -419,7 +419,8 @@ fn draw_ui(frame: &mut Frame, app: &App, list_state: &mut ListState) {
 }
 
 fn draw_feed_list(frame: &mut Frame, app: &App) {
-    let help_text = "↑/↓: Navigate | Enter: Open | a: Add | d: Delete | s: Sort | Esc: Back";
+    let help_text =
+        "↑/↓: Navigate | Enter: Filter | o: Open | a: Add | d: Delete | s: Sort | Esc: Back";
     let available_width = frame.area().width.saturating_sub(4) as usize;
     let help_lines = if available_width > 0 {
         help_text.chars().count().div_ceil(available_width)
@@ -539,8 +540,11 @@ fn draw_article_content(frame: &mut Frame, app: &App) {
 }
 
 fn draw_article_list(frame: &mut Frame, app: &App, list_state: &mut ListState) {
-    let help_text =
-        "↑/↓: Navigate | Enter: View | o: Open | r: Reload | a: Add | l: List | q: Quit";
+    let help_text = if app.filter_feed_url.is_some() {
+        "↑/↓: Navigate | Enter: View | o: Open | r: Reload | a: Add | l: List | Esc: Clear | q: Quit"
+    } else {
+        "↑/↓: Navigate | Enter: View | o: Open | r: Reload | a: Add | l: List | q: Quit"
+    };
     let available_width = frame.area().width.saturating_sub(4) as usize;
     let help_lines = if available_width > 0 {
         help_text.chars().count().div_ceil(available_width)
