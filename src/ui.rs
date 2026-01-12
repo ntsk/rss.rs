@@ -101,6 +101,7 @@ fn run_event_loop(
                                 app.filter_feed_url = None;
                                 app.selected = 0;
                             }
+                            app.clear_search();
                         }
                         KeyCode::Down | KeyCode::Char('j') => {
                             app.select_next();
@@ -159,6 +160,15 @@ fn run_event_loop(
                         KeyCode::Char('r') => app.request_reload(),
                         KeyCode::Char('a') => app.start_adding_feed(),
                         KeyCode::Char('l') => app.show_feed_list(),
+                        KeyCode::Char('/') => app.start_search(),
+                        KeyCode::Char('n') => {
+                            app.next_match();
+                            list_state.select(Some(app.selected));
+                        }
+                        KeyCode::Char('N') => {
+                            app.previous_match();
+                            list_state.select(Some(app.selected));
+                        }
                         _ => {}
                     },
                     InputMode::FeedList => match key.code {
@@ -256,6 +266,25 @@ fn run_event_loop(
                             {
                                 app.set_status(format!("Failed to open browser: {}", e));
                             }
+                        }
+                        _ => {}
+                    },
+                    InputMode::Searching => match key.code {
+                        KeyCode::Esc => {
+                            app.input_mode = InputMode::Normal;
+                            app.input_buffer.clear();
+                        }
+                        KeyCode::Enter => {
+                            if !app.input_buffer.is_empty() {
+                                app.execute_search();
+                                list_state.select(Some(app.selected));
+                            } else {
+                                app.input_mode = InputMode::Normal;
+                            }
+                        }
+                        KeyCode::Char(c) => app.input_buffer.push(c),
+                        KeyCode::Backspace => {
+                            app.input_buffer.pop();
                         }
                         _ => {}
                     },
@@ -553,7 +582,10 @@ fn draw_article_list(frame: &mut Frame, app: &App, list_state: &mut ListState) {
     };
     let help_height = (help_lines as u16) + 2;
 
-    let bottom_height = if app.input_mode == InputMode::AddingFeed || app.status_message.is_some() {
+    let has_input_box = app.input_mode == InputMode::AddingFeed
+        || app.input_mode == InputMode::Searching
+        || app.status_message.is_some();
+    let bottom_height = if has_input_box {
         help_height + 3
     } else {
         help_height
@@ -609,13 +641,11 @@ fn draw_article_list(frame: &mut Frame, app: &App, list_state: &mut ListState) {
 
     let bottom_chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints(
-            if app.input_mode == InputMode::AddingFeed || app.status_message.is_some() {
-                vec![Constraint::Length(3), Constraint::Length(help_height)]
-            } else {
-                vec![Constraint::Length(help_height)]
-            },
-        )
+        .constraints(if has_input_box {
+            vec![Constraint::Length(3), Constraint::Length(help_height)]
+        } else {
+            vec![Constraint::Length(help_height)]
+        })
         .split(chunks[1]);
 
     if app.input_mode == InputMode::AddingFeed {
@@ -627,6 +657,18 @@ fn draw_article_list(frame: &mut Frame, app: &App, list_state: &mut ListState) {
         frame.render_widget(input, bottom_chunks[0]);
 
         let help = Paragraph::new("Type feed URL and press Enter")
+            .wrap(Wrap { trim: true })
+            .block(Block::default().borders(Borders::ALL));
+        frame.render_widget(help, bottom_chunks[1]);
+    } else if app.input_mode == InputMode::Searching {
+        let input = Paragraph::new(format!("/{}", app.input_buffer)).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Search (Enter to search, Esc to cancel)"),
+        );
+        frame.render_widget(input, bottom_chunks[0]);
+
+        let help = Paragraph::new("Type search query and press Enter")
             .wrap(Wrap { trim: true })
             .block(Block::default().borders(Borders::ALL));
         frame.render_widget(help, bottom_chunks[1]);
@@ -659,6 +701,7 @@ pub enum InputMode {
     AddingFeed,
     FeedList,
     ViewingArticle,
+    Searching,
 }
 
 pub struct App {
@@ -679,6 +722,9 @@ pub struct App {
     pub article_content: Option<String>,
     pub article_scroll: usize,
     pub filter_feed_url: Option<String>,
+    pub search_query: Option<String>,
+    pub search_matches: Vec<usize>,
+    pub search_current: usize,
 }
 
 impl App {
@@ -701,6 +747,9 @@ impl App {
             article_content: None,
             article_scroll: 0,
             filter_feed_url: None,
+            search_query: None,
+            search_matches: Vec::new(),
+            search_current: 0,
         }
     }
 
@@ -846,6 +895,54 @@ impl App {
 
     pub fn apply_feed_status(&mut self, status: HashMap<String, bool>) {
         self.feed_status = status;
+    }
+
+    pub fn start_search(&mut self) {
+        self.input_mode = InputMode::Searching;
+        self.input_buffer.clear();
+    }
+
+    pub fn execute_search(&mut self) {
+        let query = self.input_buffer.to_lowercase();
+        self.search_query = Some(self.input_buffer.clone());
+        self.search_matches = self
+            .filtered_articles()
+            .iter()
+            .enumerate()
+            .filter(|(_, a)| a.title.to_lowercase().contains(&query))
+            .map(|(i, _)| i)
+            .collect();
+        self.search_current = 0;
+        if let Some(&first_match) = self.search_matches.first() {
+            self.selected = first_match;
+        }
+        self.input_mode = InputMode::Normal;
+    }
+
+    pub fn next_match(&mut self) {
+        if self.search_matches.is_empty() {
+            return;
+        }
+        self.search_current = (self.search_current + 1) % self.search_matches.len();
+        self.selected = self.search_matches[self.search_current];
+    }
+
+    pub fn previous_match(&mut self) {
+        if self.search_matches.is_empty() {
+            return;
+        }
+        if self.search_current == 0 {
+            self.search_current = self.search_matches.len() - 1;
+        } else {
+            self.search_current -= 1;
+        }
+        self.selected = self.search_matches[self.search_current];
+    }
+
+    pub fn clear_search(&mut self) {
+        self.search_query = None;
+        self.search_matches.clear();
+        self.search_current = 0;
     }
 }
 
@@ -1133,5 +1230,152 @@ mod tests {
         let app = App::new(articles, TEST_REFRESH_INTERVAL, false);
 
         assert_eq!(app.get_feed_status("https://example.com/feed.xml"), None);
+    }
+
+    fn create_searchable_articles() -> Vec<Article> {
+        vec![
+            Article {
+                title: "Rust Programming".to_string(),
+                link: "https://example.com/1".to_string(),
+                published: Some(Utc::now()),
+                feed_title: "Tech Blog".to_string(),
+            },
+            Article {
+                title: "Python Tutorial".to_string(),
+                link: "https://example.com/2".to_string(),
+                published: Some(Utc::now()),
+                feed_title: "Tech Blog".to_string(),
+            },
+            Article {
+                title: "Rust Web Framework".to_string(),
+                link: "https://example.com/3".to_string(),
+                published: Some(Utc::now()),
+                feed_title: "Dev News".to_string(),
+            },
+            Article {
+                title: "JavaScript Basics".to_string(),
+                link: "https://example.com/4".to_string(),
+                published: Some(Utc::now()),
+                feed_title: "Dev News".to_string(),
+            },
+        ]
+    }
+
+    #[test]
+    fn test_start_search() {
+        let articles = create_searchable_articles();
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+
+        app.start_search();
+
+        assert_eq!(app.input_mode, InputMode::Searching);
+        assert!(app.input_buffer.is_empty());
+    }
+
+    #[test]
+    fn test_execute_search_finds_matches() {
+        let articles = create_searchable_articles();
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.input_buffer = "Rust".to_string();
+
+        app.execute_search();
+
+        assert_eq!(app.search_matches.len(), 2);
+        assert_eq!(app.search_matches[0], 0);
+        assert_eq!(app.search_matches[1], 2);
+        assert_eq!(app.selected, 0);
+    }
+
+    #[test]
+    fn test_execute_search_no_matches() {
+        let articles = create_searchable_articles();
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.input_buffer = "Golang".to_string();
+
+        app.execute_search();
+
+        assert!(app.search_matches.is_empty());
+    }
+
+    #[test]
+    fn test_execute_search_case_insensitive() {
+        let articles = create_searchable_articles();
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.input_buffer = "rust".to_string();
+
+        app.execute_search();
+
+        assert_eq!(app.search_matches.len(), 2);
+    }
+
+    #[test]
+    fn test_next_match() {
+        let articles = create_searchable_articles();
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.input_buffer = "Rust".to_string();
+        app.execute_search();
+
+        app.next_match();
+
+        assert_eq!(app.selected, 2);
+        assert_eq!(app.search_current, 1);
+    }
+
+    #[test]
+    fn test_next_match_wraps_around() {
+        let articles = create_searchable_articles();
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.input_buffer = "Rust".to_string();
+        app.execute_search();
+        app.search_current = 1;
+        app.selected = 2;
+
+        app.next_match();
+
+        assert_eq!(app.selected, 0);
+        assert_eq!(app.search_current, 0);
+    }
+
+    #[test]
+    fn test_previous_match() {
+        let articles = create_searchable_articles();
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.input_buffer = "Rust".to_string();
+        app.execute_search();
+        app.search_current = 1;
+        app.selected = 2;
+
+        app.previous_match();
+
+        assert_eq!(app.selected, 0);
+        assert_eq!(app.search_current, 0);
+    }
+
+    #[test]
+    fn test_previous_match_wraps_around() {
+        let articles = create_searchable_articles();
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.input_buffer = "Rust".to_string();
+        app.execute_search();
+
+        app.previous_match();
+
+        assert_eq!(app.selected, 2);
+        assert_eq!(app.search_current, 1);
+    }
+
+    #[test]
+    fn test_clear_search() {
+        let articles = create_searchable_articles();
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.input_buffer = "Rust".to_string();
+        app.execute_search();
+        app.search_query = Some("Rust".to_string());
+
+        app.clear_search();
+
+        assert!(app.search_query.is_none());
+        assert!(app.search_matches.is_empty());
+        assert_eq!(app.search_current, 0);
     }
 }
