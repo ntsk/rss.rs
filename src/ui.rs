@@ -5,7 +5,10 @@ use crate::subscription::{Feed, SubscriptionManager};
 use anyhow::Result;
 use arboard::Clipboard;
 use crossterm::{
-    event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
+    event::{
+        self, DisableBracketedPaste, EnableBracketedPaste, Event, KeyCode, KeyEventKind,
+        KeyModifiers,
+    },
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
@@ -22,7 +25,7 @@ const STATUS_MESSAGE_DURATION_SECS: u64 = 3;
 
 pub fn run_app(articles: Vec<Article>, settings: &Settings) -> Result<()> {
     enable_raw_mode()?;
-    execute!(stdout(), EnterAlternateScreen)?;
+    execute!(stdout(), EnterAlternateScreen, EnableBracketedPaste)?;
 
     let backend = CrosstermBackend::new(stdout());
     let mut terminal = Terminal::new(backend)?;
@@ -35,7 +38,11 @@ pub fn run_app(articles: Vec<Article>, settings: &Settings) -> Result<()> {
     let result = run_event_loop(&mut terminal, &mut app, &mut list_state);
 
     disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        DisableBracketedPaste
+    )?;
 
     result
 }
@@ -76,12 +83,15 @@ fn run_event_loop(
             }
         }
 
-        if event::poll(tick_rate)?
-            && let Event::Key(key) = event::read()?
-            && key.kind == KeyEventKind::Press
-        {
-            match app.input_mode {
-                InputMode::Normal => match key.code {
+        if event::poll(tick_rate)? {
+            match event::read()? {
+                Event::Paste(text) => {
+                    if app.input_mode == InputMode::AddingFeed {
+                        app.input_buffer.push_str(&text);
+                    }
+                }
+                Event::Key(key) if key.kind == KeyEventKind::Press => match app.input_mode {
+                    InputMode::Normal => match key.code {
                     KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                         app.quit()
                     }
@@ -191,10 +201,7 @@ fn run_event_loop(
                     }
                     KeyCode::Char('v')
                         if key.modifiers.contains(KeyModifiers::CONTROL)
-                            || key.modifiers.contains(KeyModifiers::SUPER) =>
-                    {
-                        paste_from_clipboard(app);
-                    }
+                            || key.modifiers.contains(KeyModifiers::SUPER) => {}
                     KeyCode::Char('p') => {
                         paste_from_clipboard(app);
                     }
@@ -243,6 +250,8 @@ fn run_event_loop(
                     }
                     _ => {}
                 },
+                }
+                _ => {}
             }
         }
     }
