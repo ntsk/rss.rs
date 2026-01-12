@@ -96,6 +96,12 @@ fn run_event_loop(
                         app.quit()
                     }
                     KeyCode::Char('q') => app.quit(),
+                    KeyCode::Esc => {
+                        if app.filter_feed_url.is_some() {
+                            app.filter_feed_url = None;
+                            app.selected = 0;
+                        }
+                    }
                     KeyCode::Down | KeyCode::Char('j') => {
                         app.select_next();
                         list_state.select(Some(app.selected));
