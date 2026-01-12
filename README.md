@@ -112,7 +112,11 @@ rss config refresh_interval_secs 600
 | `r` | Reload feeds |
 | `a` | Add new feed |
 | `l` | Show feed list |
+| `/` | Search articles |
+| `n` | Next search result |
+| `N` | Previous search result |
 | `Ctrl+V` / `Cmd+V` / `p` | Paste URL (in add mode) |
+| `Esc` | Clear search/filter |
 | `q` / `Ctrl+c` | Quit |
 
 ### Article View Mode
