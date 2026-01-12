@@ -448,26 +448,17 @@ fn draw_ui(frame: &mut Frame, app: &App, list_state: &mut ListState) {
 }
 
 fn draw_feed_list(frame: &mut Frame, app: &App) {
-    let help_text =
-        "↑/↓: Navigate | Enter: Filter | o: Open | a: Add | d: Delete | s: Sort | Esc: Back";
-    let available_width = frame.area().width.saturating_sub(4) as usize;
-    let help_lines = if available_width > 0 {
-        help_text.chars().count().div_ceil(available_width)
+    let chunks = if app.status_message.is_some() {
+        Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(0), Constraint::Length(3)])
+            .split(frame.area())
     } else {
-        1
+        Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(100)])
+            .split(frame.area())
     };
-    let help_height = (help_lines as u16) + 2;
-
-    let bottom_height = if app.status_message.is_some() {
-        help_height + 3
-    } else {
-        help_height
-    };
-
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0), Constraint::Length(bottom_height)])
-        .split(frame.area());
 
     let available_width = chunks[0].width.saturating_sub(6) as usize;
     let items: Vec<ListItem> = app
@@ -497,47 +488,16 @@ fn draw_feed_list(frame: &mut Frame, app: &App) {
     feed_list_state.select(Some(app.feed_selected));
     frame.render_stateful_widget(list, chunks[0], &mut feed_list_state);
 
-    let bottom_chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints(if app.status_message.is_some() {
-            vec![Constraint::Length(3), Constraint::Length(help_height)]
-        } else {
-            vec![Constraint::Length(help_height)]
-        })
-        .split(chunks[1]);
-
     if let Some(msg) = &app.status_message {
         let status = Paragraph::new(msg.as_str())
             .wrap(Wrap { trim: true })
             .block(Block::default().borders(Borders::ALL).title("Status"));
-        frame.render_widget(status, bottom_chunks[0]);
-
-        let help = Paragraph::new(help_text)
-            .wrap(Wrap { trim: true })
-            .block(Block::default().borders(Borders::ALL));
-        frame.render_widget(help, bottom_chunks[1]);
-    } else {
-        let help = Paragraph::new(help_text)
-            .wrap(Wrap { trim: true })
-            .block(Block::default().borders(Borders::ALL));
-        frame.render_widget(help, bottom_chunks[0]);
+        frame.render_widget(status, chunks[1]);
     }
 }
 
 fn draw_article_content(frame: &mut Frame, app: &App) {
-    let help_text = "↑/↓: Scroll | o: Open in browser | q/Esc: Back";
-    let available_width = frame.area().width.saturating_sub(4) as usize;
-    let help_lines = if available_width > 0 {
-        help_text.chars().count().div_ceil(available_width)
-    } else {
-        1
-    };
-    let help_height = (help_lines as u16) + 2;
-
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0), Constraint::Length(help_height)])
-        .split(frame.area());
+    let area = frame.area();
 
     let title = app
         .selected_article()
@@ -546,7 +506,7 @@ fn draw_article_content(frame: &mut Frame, app: &App) {
 
     let content = app.article_content.as_deref().unwrap_or("");
     let lines: Vec<&str> = content.lines().collect();
-    let visible_height = chunks[0].height.saturating_sub(2) as usize;
+    let visible_height = area.height.saturating_sub(2) as usize;
     let max_scroll = lines.len().saturating_sub(visible_height);
     let scroll = app.article_scroll.min(max_scroll);
 
@@ -560,41 +520,24 @@ fn draw_article_content(frame: &mut Frame, app: &App) {
 
     let content_widget =
         Paragraph::new(visible_lines).block(Block::default().borders(Borders::ALL).title(title));
-    frame.render_widget(content_widget, chunks[0]);
-
-    let help = Paragraph::new(help_text)
-        .wrap(Wrap { trim: true })
-        .block(Block::default().borders(Borders::ALL));
-    frame.render_widget(help, chunks[1]);
+    frame.render_widget(content_widget, area);
 }
 
 fn draw_article_list(frame: &mut Frame, app: &App, list_state: &mut ListState) {
-    let help_text = if app.filter_feed_url.is_some() {
-        "↑/↓: Navigate | Enter: View | o: Open | r: Reload | a: Add | l: List | Esc: Clear | q: Quit"
-    } else {
-        "↑/↓: Navigate | Enter: View | o: Open | r: Reload | a: Add | l: List | q: Quit"
-    };
-    let available_width = frame.area().width.saturating_sub(4) as usize;
-    let help_lines = if available_width > 0 {
-        help_text.chars().count().div_ceil(available_width)
-    } else {
-        1
-    };
-    let help_height = (help_lines as u16) + 2;
-
-    let has_input_box = app.input_mode == InputMode::AddingFeed
+    let has_bottom = app.input_mode == InputMode::AddingFeed
         || app.input_mode == InputMode::Searching
         || app.status_message.is_some();
-    let bottom_height = if has_input_box {
-        help_height + 3
+    let chunks = if has_bottom {
+        Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(0), Constraint::Length(3)])
+            .split(frame.area())
     } else {
-        help_height
+        Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(100)])
+            .split(frame.area())
     };
-
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0), Constraint::Length(bottom_height)])
-        .split(frame.area());
 
     let available_width = chunks[0].width.saturating_sub(4) as usize;
     let filtered = app.filtered_articles();
@@ -639,54 +582,25 @@ fn draw_article_list(frame: &mut Frame, app: &App, list_state: &mut ListState) {
 
     frame.render_stateful_widget(list, chunks[0], list_state);
 
-    let bottom_chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints(if has_input_box {
-            vec![Constraint::Length(3), Constraint::Length(help_height)]
-        } else {
-            vec![Constraint::Length(help_height)]
-        })
-        .split(chunks[1]);
-
     if app.input_mode == InputMode::AddingFeed {
         let input = Paragraph::new(app.input_buffer.as_str()).block(
             Block::default()
                 .borders(Borders::ALL)
                 .title("Add Feed URL (Enter to add, Esc to cancel)"),
         );
-        frame.render_widget(input, bottom_chunks[0]);
-
-        let help = Paragraph::new("Type feed URL and press Enter")
-            .wrap(Wrap { trim: true })
-            .block(Block::default().borders(Borders::ALL));
-        frame.render_widget(help, bottom_chunks[1]);
+        frame.render_widget(input, chunks[1]);
     } else if app.input_mode == InputMode::Searching {
         let input = Paragraph::new(format!("/{}", app.input_buffer)).block(
             Block::default()
                 .borders(Borders::ALL)
                 .title("Search (Enter to search, Esc to cancel)"),
         );
-        frame.render_widget(input, bottom_chunks[0]);
-
-        let help = Paragraph::new("Type search query and press Enter")
-            .wrap(Wrap { trim: true })
-            .block(Block::default().borders(Borders::ALL));
-        frame.render_widget(help, bottom_chunks[1]);
+        frame.render_widget(input, chunks[1]);
     } else if let Some(msg) = &app.status_message {
         let status = Paragraph::new(msg.as_str())
             .wrap(Wrap { trim: true })
             .block(Block::default().borders(Borders::ALL).title("Status"));
-        frame.render_widget(status, bottom_chunks[0]);
-
-        let help = Paragraph::new(help_text)
-            .wrap(Wrap { trim: true })
-            .block(Block::default().borders(Borders::ALL));
-        frame.render_widget(help, bottom_chunks[1]);
-    } else {
-        let help = Paragraph::new(help_text)
-            .wrap(Wrap { trim: true })
-            .block(Block::default().borders(Borders::ALL));
-        frame.render_widget(help, bottom_chunks[0]);
+        frame.render_widget(status, chunks[1]);
     }
 }
 
