@@ -140,7 +140,8 @@ rss config refresh_interval_secs 600
 | `G` | Go to last feed |
 | `Ctrl+d` | Move down 10 feeds |
 | `Ctrl+u` | Move up 10 feeds |
-| `Enter` | Open feed URL in browser |
+| `Enter` | Show articles from selected feed |
+| `o` | Open feed URL in browser |
 | `a` | Add new feed |
 | `d` | Delete selected feed |
 | `s` | Sort feeds |

@@ -167,6 +167,9 @@ fn run_event_loop(
                         }
                     }
                     KeyCode::Enter => {
+                        app.filter_by_selected_feed();
+                    }
+                    KeyCode::Char('o') => {
                         if let Some(feed) = app.feeds.get(app.feed_selected)
                             && let Err(e) = open::that(&feed.url)
                         {
@@ -552,8 +555,8 @@ fn draw_article_list(frame: &mut Frame, app: &App, list_state: &mut ListState) {
         .split(frame.area());
 
     let available_width = chunks[0].width.saturating_sub(4) as usize;
-    let items: Vec<ListItem> = app
-        .articles
+    let filtered = app.filtered_articles();
+    let items: Vec<ListItem> = filtered
         .iter()
         .map(|a| {
             let date = a
@@ -583,8 +586,12 @@ fn draw_article_list(frame: &mut Frame, app: &App, list_state: &mut ListState) {
         })
         .collect();
 
+    let title = match &app.filter_feed_url {
+        Some(filter) => format!("Articles [{}]", filter),
+        None => "Articles".to_string(),
+    };
     let list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title("Articles"))
+        .block(Block::default().borders(Borders::ALL).title(title))
         .highlight_style(Style::default().add_modifier(Modifier::REVERSED))
         .highlight_symbol("> ");
 
@@ -661,6 +668,7 @@ pub struct App {
     pub feed_status: HashMap<String, bool>,
     pub article_content: Option<String>,
     pub article_scroll: usize,
+    pub filter_feed_url: Option<String>,
 }
 
 impl App {
@@ -682,6 +690,7 @@ impl App {
             feed_status: HashMap::new(),
             article_content: None,
             article_scroll: 0,
+            filter_feed_url: None,
         }
     }
 
@@ -699,7 +708,8 @@ impl App {
     }
 
     pub fn select_next(&mut self) {
-        if !self.articles.is_empty() && self.selected < self.articles.len() - 1 {
+        let count = self.filtered_articles().len();
+        if count > 0 && self.selected < count - 1 {
             self.selected += 1;
         }
     }
@@ -715,8 +725,9 @@ impl App {
     }
 
     pub fn select_last(&mut self) {
-        if !self.articles.is_empty() {
-            self.selected = self.articles.len() - 1;
+        let count = self.filtered_articles().len();
+        if count > 0 {
+            self.selected = count - 1;
         }
     }
 
@@ -742,7 +753,7 @@ impl App {
     }
 
     pub fn selected_article(&self) -> Option<&Article> {
-        self.articles.get(self.selected)
+        self.filtered_articles().get(self.selected).copied()
     }
 
     pub fn clear_status(&mut self) {
@@ -796,6 +807,27 @@ impl App {
     pub fn close_feed_list(&mut self) {
         self.input_mode = InputMode::Normal;
         self.feeds.clear();
+        self.filter_feed_url = None;
+    }
+
+    pub fn filter_by_selected_feed(&mut self) {
+        if let Some(feed) = self.feeds.get(self.feed_selected) {
+            let filter_title = feed.title.clone().unwrap_or_else(|| feed.url.clone());
+            self.filter_feed_url = Some(filter_title);
+            self.input_mode = InputMode::Normal;
+            self.selected = 0;
+        }
+    }
+
+    pub fn filtered_articles(&self) -> Vec<&Article> {
+        match &self.filter_feed_url {
+            Some(filter) => self
+                .articles
+                .iter()
+                .filter(|a| a.feed_title == *filter)
+                .collect(),
+            None => self.articles.iter().collect(),
+        }
     }
 
     pub fn get_feed_status(&self, url: &str) -> Option<bool> {
