@@ -3,181 +3,55 @@
 [![test](https://github.com/ntsk/rss.rs/actions/workflows/test.yml/badge.svg)](https://github.com/ntsk/rss.rs/actions/workflows/test.yml)
 [![lint](https://github.com/ntsk/rss.rs/actions/workflows/lint.yml/badge.svg)](https://github.com/ntsk/rss.rs/actions/workflows/lint.yml)
 
-A terminal-based RSS/Atom feed reader with TUI.
-
-```
-┌Articles───────────────────────────────────────────────────────────────────────┐
-│> 01/12 New Release: Version 2.0 is here                                       │
-│        [Tech Blog]                                                            │
-│  01/11 Understanding Rust Ownership                                           │
-│        [Rust Weekly]                                                          │
-│  01/10 10 Tips for Better Code Reviews                                        │
-│        [Dev Community]                                                        │
-│  01/09 Introduction to WebAssembly                                            │
-│        [Mozilla Hacks]                                                        │
-│                                                                               │
-│                                                                               │
-│                                                                               │
-└───────────────────────────────────────────────────────────────────────────────┘
-```
+A fast, minimal RSS/Atom feed reader for the terminal.
 
 ## Features
 
-- RSS 2.0 and Atom feed support
-- Terminal UI with keyboard navigation
-- Auto-refresh (configurable interval)
-- Manual refresh with `r` key
-- Open articles in default browser
+- Vim-style keybindings
+- RSS 2.0 and Atom support
 - OPML import/export
-- XDG Base Directory compliant config storage
+- Article search (`/`, `n`, `N`)
+- Auto-refresh
 
 ## Installation
-
-### From source
 
 ```bash
 cargo install --path .
 ```
 
-### From crates.io
-
-```bash
-cargo install rss
-```
-
 ## Usage
 
-### View articles
-
 ```bash
-rss
+rss                              # View articles
+rss add <url>                    # Add feed
+rss delete <url>                 # Remove feed
+rss list                         # List feeds
+rss import <file.opml>           # Import from OPML
+rss export <file.opml>           # Export to OPML
 ```
 
-### Add a feed
-
-```bash
-rss add https://example.com/feed.xml
-```
-
-### Remove a feed
-
-```bash
-rss delete https://example.com/feed.xml
-```
-
-### List subscriptions
-
-```bash
-rss list
-```
-
-### Import feeds from OPML
-
-```bash
-rss import feeds.opml
-```
-
-### Export feeds to OPML
-
-```bash
-rss export feeds.opml
-```
-
-### Show settings
-
-```bash
-rss config
-```
-
-### Change settings
-
-```bash
-rss config auto_sort true
-rss config refresh_interval_secs 600
-```
-
-## Keyboard Shortcuts
+## Keybindings
 
 | Key | Action |
 |-----|--------|
-| `↑` / `k` | Move up |
-| `↓` / `j` | Move down |
-| `g` | Go to first item |
-| `G` | Go to last item |
-| `Ctrl+d` | Move down 10 items |
-| `Ctrl+u` | Move up 10 items |
-| `Enter` | View article content |
-| `o` | Open article in browser |
-| `r` | Reload feeds |
-| `a` | Add new feed |
-| `l` | Show feed list |
-| `/` | Search articles |
-| `n` | Next search result |
-| `N` | Previous search result |
-| `Ctrl+V` / `Cmd+V` / `p` | Paste URL (in add mode) |
-| `Esc` | Clear search/filter |
-| `q` / `Ctrl+c` | Quit |
-
-### Article View Mode
-
-| Key | Action |
-|-----|--------|
-| `↑` / `k` | Scroll up |
-| `↓` / `j` | Scroll down |
-| `g` | Scroll to top |
-| `G` | Scroll to bottom |
-| `Ctrl+d` | Scroll down half page |
-| `Ctrl+u` | Scroll up half page |
-| `Ctrl+f` | Scroll down full page |
-| `Ctrl+b` | Scroll up full page |
+| `j` / `k` | Navigate |
+| `Enter` | View article |
 | `o` | Open in browser |
-| `q` / `Esc` | Back to list |
-
-### Feed List Mode
-
-| Key | Action |
-|-----|--------|
-| `↑` / `k` | Move up |
-| `↓` / `j` | Move down |
-| `g` | Go to first feed |
-| `G` | Go to last feed |
-| `Ctrl+d` | Move down 10 feeds |
-| `Ctrl+u` | Move up 10 feeds |
-| `Enter` | Show articles from selected feed |
-| `o` | Open feed URL in browser |
-| `a` | Add new feed |
-| `d` | Delete selected feed |
-| `s` | Sort feeds |
-| `Esc` | Back to articles |
+| `/` | Search |
+| `n` / `N` | Next/prev match |
+| `l` | Feed list |
+| `a` | Add feed |
+| `r` | Reload |
+| `q` | Quit |
 
 ## Configuration
 
-Configuration files are stored in `~/.config/rss/` (or `$XDG_CONFIG_HOME/rss/`).
-
-### Files
-
-- `feeds.json` - Feed subscriptions
-- `config.toml` - Application settings (optional)
-
-### Settings
-
-Create `~/.config/rss/config.toml` to customize:
+Config files are stored in `~/.config/rss/`.
 
 ```toml
-# Auto-refresh interval in seconds (default: 300)
-refresh_interval_secs = 600
-
-# Auto-sort feeds when adding/deleting (default: false)
-auto_sort = true
-```
-
-## Logging
-
-Enable debug logging with the `RUST_LOG` environment variable:
-
-```bash
-RUST_LOG=debug rss
-RUST_LOG=rss=debug rss
+# ~/.config/rss/config.toml
+refresh_interval_secs = 300
+auto_sort = false
 ```
 
 ## License
