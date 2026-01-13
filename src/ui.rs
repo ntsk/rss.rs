@@ -23,7 +23,11 @@ use std::time::{Duration, Instant};
 const TICK_RATE_MS: u64 = 250;
 const STATUS_MESSAGE_DURATION_SECS: u64 = 3;
 
-pub fn run_app(articles: Vec<Article>, settings: &Settings) -> Result<()> {
+pub fn run_app(
+    articles: Vec<Article>,
+    settings: &Settings,
+    feed_status: HashMap<String, bool>,
+) -> Result<()> {
     enable_raw_mode()?;
     execute!(stdout(), EnterAlternateScreen, EnableBracketedPaste)?;
 
@@ -32,6 +36,7 @@ pub fn run_app(articles: Vec<Article>, settings: &Settings) -> Result<()> {
 
     let refresh_interval = Duration::from_secs(settings.refresh_interval_secs);
     let mut app = App::new(articles, refresh_interval, settings.auto_sort);
+    app.feed_status = feed_status;
     let mut list_state = ListState::default();
     list_state.select(Some(0));
 

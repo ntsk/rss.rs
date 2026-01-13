@@ -137,7 +137,7 @@ fn show_articles(manager: &SubscriptionManager) -> Result<()> {
         return Ok(());
     }
 
-    ui::run_app(result.articles, &settings)?;
+    ui::run_app(result.articles, &settings, result.feed_status)?;
 
     Ok(())
 }
