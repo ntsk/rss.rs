@@ -240,30 +240,39 @@ fn run_event_loop(
                             app.input_mode = InputMode::Normal;
                             app.article_content = None;
                             app.article_scroll = 0;
+                            app.article_cursor = 0;
                         }
                         KeyCode::Down | KeyCode::Char('j') => {
-                            app.article_scroll = app.article_scroll.saturating_add(1);
+                            app.article_cursor_down();
                         }
                         KeyCode::Up | KeyCode::Char('k') => {
-                            app.article_scroll = app.article_scroll.saturating_sub(1);
+                            app.article_cursor_up();
                         }
                         KeyCode::Char('g') => {
-                            app.article_scroll = 0;
+                            app.article_cursor_to_top();
                         }
                         KeyCode::Char('G') => {
-                            app.article_scroll = usize::MAX;
+                            app.article_cursor_to_bottom();
                         }
                         KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                            app.article_scroll = app.article_scroll.saturating_add(15);
+                            for _ in 0..15 {
+                                app.article_cursor_down();
+                            }
                         }
                         KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                            app.article_scroll = app.article_scroll.saturating_sub(15);
+                            for _ in 0..15 {
+                                app.article_cursor_up();
+                            }
                         }
                         KeyCode::Char('f') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                            app.article_scroll = app.article_scroll.saturating_add(30);
+                            for _ in 0..30 {
+                                app.article_cursor_down();
+                            }
                         }
                         KeyCode::Char('b') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                            app.article_scroll = app.article_scroll.saturating_sub(30);
+                            for _ in 0..30 {
+                                app.article_cursor_up();
+                            }
                         }
                         KeyCode::Char('o') => {
                             if let Some(article) = app.selected_article()
@@ -536,8 +545,14 @@ fn draw_article_content(frame: &mut Frame, app: &App) {
     let content = app.article_content.as_deref().unwrap_or("");
     let lines: Vec<&str> = content.lines().collect();
     let visible_height = area.height.saturating_sub(2) as usize;
-    let max_scroll = lines.len().saturating_sub(visible_height);
-    let scroll = app.article_scroll.min(max_scroll);
+
+    let scroll = if app.article_cursor < app.article_scroll {
+        app.article_cursor
+    } else if app.article_cursor >= app.article_scroll + visible_height {
+        app.article_cursor.saturating_sub(visible_height - 1)
+    } else {
+        app.article_scroll
+    };
 
     let (select_start, select_end) = match (app.visual_select_start, app.visual_select_end) {
         (Some(s), Some(e)) if app.input_mode == InputMode::VisualSelect => {
@@ -550,18 +565,28 @@ fn draw_article_content(frame: &mut Frame, app: &App) {
         _ => (None, None),
     };
 
+    let cursor_line = app.article_cursor;
+
     let styled_lines: Vec<Line> = lines
         .iter()
         .enumerate()
         .skip(scroll)
         .take(visible_height)
         .map(|(i, line)| {
-            let is_selected =
-                select_start.is_some() && select_end.is_some() && i >= select_start.unwrap() && i <= select_end.unwrap();
+            let is_selected = select_start.is_some()
+                && select_end.is_some()
+                && i >= select_start.unwrap()
+                && i <= select_end.unwrap();
+            let is_cursor = i == cursor_line && app.input_mode == InputMode::ViewingArticle;
             if is_selected {
                 Line::from(Span::styled(
                     *line,
                     Style::default().add_modifier(Modifier::REVERSED),
+                ))
+            } else if is_cursor {
+                Line::from(Span::styled(
+                    *line,
+                    Style::default().bg(Color::DarkGray),
                 ))
             } else {
                 Line::from(*line)
@@ -687,6 +712,7 @@ pub struct App {
     pub feed_status: HashMap<String, bool>,
     pub article_content: Option<String>,
     pub article_scroll: usize,
+    pub article_cursor: usize,
     pub filter_feed_url: Option<String>,
     pub search_query: Option<String>,
     pub search_matches: Vec<usize>,
@@ -714,6 +740,7 @@ impl App {
             feed_status: HashMap::new(),
             article_content: None,
             article_scroll: 0,
+            article_cursor: 0,
             filter_feed_url: None,
             search_query: None,
             search_matches: Vec::new(),
@@ -917,9 +944,8 @@ impl App {
 
     pub fn start_visual_select(&mut self) {
         self.input_mode = InputMode::VisualSelect;
-        let current_line = self.article_scroll;
-        self.visual_select_start = Some(current_line);
-        self.visual_select_end = Some(current_line);
+        self.visual_select_start = Some(self.article_cursor);
+        self.visual_select_end = Some(self.article_cursor);
     }
 
     pub fn visual_select_down(&mut self) {
@@ -958,6 +984,35 @@ impl App {
         self.input_mode = InputMode::ViewingArticle;
         self.visual_select_start = None;
         self.visual_select_end = None;
+    }
+
+    fn article_line_count(&self) -> usize {
+        self.article_content
+            .as_ref()
+            .map(|c| c.lines().count())
+            .unwrap_or(0)
+    }
+
+    pub fn article_cursor_down(&mut self) {
+        let line_count = self.article_line_count();
+        if line_count > 0 && self.article_cursor < line_count - 1 {
+            self.article_cursor += 1;
+        }
+    }
+
+    pub fn article_cursor_up(&mut self) {
+        self.article_cursor = self.article_cursor.saturating_sub(1);
+    }
+
+    pub fn article_cursor_to_top(&mut self) {
+        self.article_cursor = 0;
+    }
+
+    pub fn article_cursor_to_bottom(&mut self) {
+        let line_count = self.article_line_count();
+        if line_count > 0 {
+            self.article_cursor = line_count - 1;
+        }
     }
 }
 
@@ -1518,5 +1573,91 @@ mod tests {
         assert_eq!(app.input_mode, InputMode::ViewingArticle);
         assert_eq!(app.visual_select_start, None);
         assert_eq!(app.visual_select_end, None);
+    }
+
+    #[test]
+    fn test_article_cursor_down() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.article_cursor = 0;
+
+        app.article_cursor_down();
+
+        assert_eq!(app.article_cursor, 1);
+    }
+
+    #[test]
+    fn test_article_cursor_down_at_bottom() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.article_cursor = 2;
+
+        app.article_cursor_down();
+
+        assert_eq!(app.article_cursor, 2);
+    }
+
+    #[test]
+    fn test_article_cursor_up() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.article_cursor = 2;
+
+        app.article_cursor_up();
+
+        assert_eq!(app.article_cursor, 1);
+    }
+
+    #[test]
+    fn test_article_cursor_up_at_top() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.article_cursor = 0;
+
+        app.article_cursor_up();
+
+        assert_eq!(app.article_cursor, 0);
+    }
+
+    #[test]
+    fn test_article_cursor_to_top() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.article_cursor = 2;
+
+        app.article_cursor_to_top();
+
+        assert_eq!(app.article_cursor, 0);
+    }
+
+    #[test]
+    fn test_article_cursor_to_bottom() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.article_cursor = 0;
+
+        app.article_cursor_to_bottom();
+
+        assert_eq!(app.article_cursor, 2);
+    }
+
+    #[test]
+    fn test_visual_select_starts_at_cursor() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.input_mode = InputMode::ViewingArticle;
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.article_cursor = 1;
+
+        app.start_visual_select();
+
+        assert_eq!(app.visual_select_start, Some(1));
+        assert_eq!(app.visual_select_end, Some(1));
     }
 }
