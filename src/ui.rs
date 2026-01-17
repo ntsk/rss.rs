@@ -297,6 +297,9 @@ fn run_event_loop(
                         KeyCode::Char('v') => {
                             app.start_visual_select();
                         }
+                        KeyCode::Char('V') => {
+                            app.start_visual_line_select();
+                        }
                         _ => {}
                     },
                     InputMode::Searching => match key.code {
@@ -342,6 +345,27 @@ fn run_event_loop(
                                 app.set_status("Copied");
                             }
                             app.cancel_visual_select();
+                        }
+                        _ => {}
+                    },
+                    InputMode::VisualLine => match key.code {
+                        KeyCode::Esc => {
+                            app.cancel_visual_line_select();
+                        }
+                        KeyCode::Down | KeyCode::Char('j') => {
+                            app.visual_line_down();
+                        }
+                        KeyCode::Up | KeyCode::Char('k') => {
+                            app.visual_line_up();
+                        }
+                        KeyCode::Char('y') => {
+                            if let Some(text) = app.get_selected_lines()
+                                && let Ok(mut clipboard) = Clipboard::new()
+                                && clipboard.set_text(&text).is_ok()
+                            {
+                                app.set_status("Copied");
+                            }
+                            app.cancel_visual_line_select();
                         }
                         _ => {}
                     },
@@ -499,7 +523,9 @@ fn truncate_str(s: &str, max_width: usize) -> String {
 fn draw_ui(frame: &mut Frame, app: &App, list_state: &mut ListState) {
     match app.input_mode {
         InputMode::FeedList => draw_feed_list(frame, app),
-        InputMode::ViewingArticle | InputMode::VisualSelect => draw_article_content(frame, app),
+        InputMode::ViewingArticle | InputMode::VisualSelect | InputMode::VisualLine => {
+            draw_article_content(frame, app)
+        }
         _ => draw_article_list(frame, app, list_state),
     }
 }
@@ -573,8 +599,19 @@ fn draw_article_content(frame: &mut Frame, app: &App) {
         app.article_scroll
     };
 
-    let selection = match (app.visual_select_start, app.visual_select_end) {
+    let char_selection = match (app.visual_select_start, app.visual_select_end) {
         (Some(s), Some(e)) if app.input_mode == InputMode::VisualSelect => {
+            if s <= e {
+                Some((s, e))
+            } else {
+                Some((e, s))
+            }
+        }
+        _ => None,
+    };
+
+    let line_selection = match (app.visual_line_start, app.visual_line_end) {
+        (Some(s), Some(e)) if app.input_mode == InputMode::VisualLine => {
             if s <= e {
                 Some((s, e))
             } else {
@@ -596,7 +633,17 @@ fn draw_article_content(frame: &mut Frame, app: &App) {
             let chars: Vec<char> = line.chars().collect();
             let is_cursor_line = i == cursor_row && app.input_mode == InputMode::ViewingArticle;
 
-            if let Some(((start_row, start_col), (end_row, end_col))) = selection
+            if let Some((start_row, end_row)) = line_selection
+                && i >= start_row
+                && i <= end_row
+            {
+                return Line::from(Span::styled(
+                    *line,
+                    Style::default().add_modifier(Modifier::REVERSED),
+                ));
+            }
+
+            if let Some(((start_row, start_col), (end_row, end_col))) = char_selection
                 && i >= start_row
                 && i <= end_row
             {
@@ -753,6 +800,7 @@ pub enum InputMode {
     ViewingArticle,
     Searching,
     VisualSelect,
+    VisualLine,
 }
 
 pub struct App {
@@ -780,6 +828,8 @@ pub struct App {
     pub search_current: usize,
     pub visual_select_start: Option<(usize, usize)>,
     pub visual_select_end: Option<(usize, usize)>,
+    pub visual_line_start: Option<usize>,
+    pub visual_line_end: Option<usize>,
 }
 
 impl App {
@@ -809,6 +859,8 @@ impl App {
             search_current: 0,
             visual_select_start: None,
             visual_select_end: None,
+            visual_line_start: None,
+            visual_line_end: None,
         }
     }
 
@@ -1097,6 +1149,52 @@ impl App {
         self.input_mode = InputMode::ViewingArticle;
         self.visual_select_start = None;
         self.visual_select_end = None;
+    }
+
+    pub fn start_visual_line_select(&mut self) {
+        self.input_mode = InputMode::VisualLine;
+        self.visual_line_start = Some(self.article_cursor);
+        self.visual_line_end = Some(self.article_cursor);
+    }
+
+    pub fn visual_line_down(&mut self) {
+        if let Some(end) = self.visual_line_end {
+            let line_count = self.article_line_count();
+            if line_count > 0 && end < line_count - 1 {
+                self.visual_line_end = Some(end + 1);
+            }
+        }
+    }
+
+    pub fn visual_line_up(&mut self) {
+        if let Some(end) = self.visual_line_end
+            && end > 0
+        {
+            self.visual_line_end = Some(end - 1);
+        }
+    }
+
+    pub fn get_selected_lines(&self) -> Option<String> {
+        let content = self.article_content.as_ref()?;
+        let start = self.visual_line_start?;
+        let end = self.visual_line_end?;
+        let (from, to) = if start <= end {
+            (start, end)
+        } else {
+            (end, start)
+        };
+        let lines: Vec<&str> = content.lines().collect();
+        if to >= lines.len() {
+            return None;
+        }
+        let selected: Vec<&str> = lines[from..=to].to_vec();
+        Some(selected.join("\n"))
+    }
+
+    pub fn cancel_visual_line_select(&mut self) {
+        self.input_mode = InputMode::ViewingArticle;
+        self.visual_line_start = None;
+        self.visual_line_end = None;
     }
 
     fn article_line_count(&self) -> usize {
@@ -1881,5 +1979,102 @@ mod tests {
         let selected = app.get_selected_text();
 
         assert_eq!(selected, Some("llo\nWor".to_string()));
+    }
+
+    #[test]
+    fn test_start_visual_line_select() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.input_mode = InputMode::ViewingArticle;
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.article_cursor = 1;
+
+        app.start_visual_line_select();
+
+        assert_eq!(app.input_mode, InputMode::VisualLine);
+        assert_eq!(app.visual_line_start, Some(1));
+        assert_eq!(app.visual_line_end, Some(1));
+    }
+
+    #[test]
+    fn test_visual_line_extend_down() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.input_mode = InputMode::VisualLine;
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.visual_line_start = Some(0);
+        app.visual_line_end = Some(0);
+
+        app.visual_line_down();
+
+        assert_eq!(app.visual_line_end, Some(1));
+    }
+
+    #[test]
+    fn test_visual_line_extend_up() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.input_mode = InputMode::VisualLine;
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.visual_line_start = Some(1);
+        app.visual_line_end = Some(1);
+
+        app.visual_line_up();
+
+        assert_eq!(app.visual_line_end, Some(0));
+    }
+
+    #[test]
+    fn test_get_selected_lines_single() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.visual_line_start = Some(1);
+        app.visual_line_end = Some(1);
+
+        let selected = app.get_selected_lines();
+
+        assert_eq!(selected, Some("Line 2".to_string()));
+    }
+
+    #[test]
+    fn test_get_selected_lines_multiple() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.visual_line_start = Some(0);
+        app.visual_line_end = Some(2);
+
+        let selected = app.get_selected_lines();
+
+        assert_eq!(selected, Some("Line 1\nLine 2\nLine 3".to_string()));
+    }
+
+    #[test]
+    fn test_get_selected_lines_reverse() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.visual_line_start = Some(2);
+        app.visual_line_end = Some(0);
+
+        let selected = app.get_selected_lines();
+
+        assert_eq!(selected, Some("Line 1\nLine 2\nLine 3".to_string()));
+    }
+
+    #[test]
+    fn test_cancel_visual_line_select() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.input_mode = InputMode::VisualLine;
+        app.visual_line_start = Some(0);
+        app.visual_line_end = Some(1);
+
+        app.cancel_visual_line_select();
+
+        assert_eq!(app.input_mode, InputMode::ViewingArticle);
+        assert_eq!(app.visual_line_start, None);
+        assert_eq!(app.visual_line_end, None);
     }
 }
