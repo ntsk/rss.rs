@@ -272,6 +272,9 @@ fn run_event_loop(
                                 app.set_status(format!("Failed to open browser: {}", e));
                             }
                         }
+                        KeyCode::Char('v') => {
+                            app.start_visual_select();
+                        }
                         _ => {}
                     },
                     InputMode::Searching => match key.code {
@@ -290,6 +293,27 @@ fn run_event_loop(
                         KeyCode::Char(c) => app.input_buffer.push(c),
                         KeyCode::Backspace => {
                             app.input_buffer.pop();
+                        }
+                        _ => {}
+                    },
+                    InputMode::VisualSelect => match key.code {
+                        KeyCode::Esc => {
+                            app.cancel_visual_select();
+                        }
+                        KeyCode::Down | KeyCode::Char('j') => {
+                            app.visual_select_down();
+                        }
+                        KeyCode::Up | KeyCode::Char('k') => {
+                            app.visual_select_up();
+                        }
+                        KeyCode::Char('y') => {
+                            if let Some(text) = app.get_selected_text()
+                                && let Ok(mut clipboard) = Clipboard::new()
+                                && clipboard.set_text(&text).is_ok()
+                            {
+                                app.set_status("Copied");
+                            }
+                            app.cancel_visual_select();
                         }
                         _ => {}
                     },
@@ -447,7 +471,7 @@ fn truncate_str(s: &str, max_width: usize) -> String {
 fn draw_ui(frame: &mut Frame, app: &App, list_state: &mut ListState) {
     match app.input_mode {
         InputMode::FeedList => draw_feed_list(frame, app),
-        InputMode::ViewingArticle => draw_article_content(frame, app),
+        InputMode::ViewingArticle | InputMode::VisualSelect => draw_article_content(frame, app),
         _ => draw_article_list(frame, app, list_state),
     }
 }
@@ -515,16 +539,38 @@ fn draw_article_content(frame: &mut Frame, app: &App) {
     let max_scroll = lines.len().saturating_sub(visible_height);
     let scroll = app.article_scroll.min(max_scroll);
 
-    let visible_lines: String = lines
+    let (select_start, select_end) = match (app.visual_select_start, app.visual_select_end) {
+        (Some(s), Some(e)) if app.input_mode == InputMode::VisualSelect => {
+            if s <= e {
+                (Some(s), Some(e))
+            } else {
+                (Some(e), Some(s))
+            }
+        }
+        _ => (None, None),
+    };
+
+    let styled_lines: Vec<Line> = lines
         .iter()
+        .enumerate()
         .skip(scroll)
         .take(visible_height)
-        .copied()
-        .collect::<Vec<_>>()
-        .join("\n");
+        .map(|(i, line)| {
+            let is_selected =
+                select_start.is_some() && select_end.is_some() && i >= select_start.unwrap() && i <= select_end.unwrap();
+            if is_selected {
+                Line::from(Span::styled(
+                    *line,
+                    Style::default().add_modifier(Modifier::REVERSED),
+                ))
+            } else {
+                Line::from(*line)
+            }
+        })
+        .collect();
 
-    let content_widget =
-        Paragraph::new(visible_lines).block(Block::default().borders(Borders::ALL).title(title));
+    let content_widget = Paragraph::new(styled_lines)
+        .block(Block::default().borders(Borders::ALL).title(title));
     frame.render_widget(content_widget, area);
 }
 
@@ -621,6 +667,7 @@ pub enum InputMode {
     FeedList,
     ViewingArticle,
     Searching,
+    VisualSelect,
 }
 
 pub struct App {
@@ -644,6 +691,8 @@ pub struct App {
     pub search_query: Option<String>,
     pub search_matches: Vec<usize>,
     pub search_current: usize,
+    pub visual_select_start: Option<usize>,
+    pub visual_select_end: Option<usize>,
 }
 
 impl App {
@@ -669,6 +718,8 @@ impl App {
             search_query: None,
             search_matches: Vec::new(),
             search_current: 0,
+            visual_select_start: None,
+            visual_select_end: None,
         }
     }
 
@@ -862,6 +913,51 @@ impl App {
         self.search_query = None;
         self.search_matches.clear();
         self.search_current = 0;
+    }
+
+    pub fn start_visual_select(&mut self) {
+        self.input_mode = InputMode::VisualSelect;
+        let current_line = self.article_scroll;
+        self.visual_select_start = Some(current_line);
+        self.visual_select_end = Some(current_line);
+    }
+
+    pub fn visual_select_down(&mut self) {
+        if let (Some(content), Some(end)) = (&self.article_content, self.visual_select_end) {
+            let line_count = content.lines().count();
+            if end < line_count.saturating_sub(1) {
+                self.visual_select_end = Some(end + 1);
+            }
+        }
+    }
+
+    pub fn visual_select_up(&mut self) {
+        if let Some(end) = self.visual_select_end {
+            self.visual_select_end = Some(end.saturating_sub(1));
+        }
+    }
+
+    pub fn get_selected_text(&self) -> Option<String> {
+        let content = self.article_content.as_ref()?;
+        let start = self.visual_select_start?;
+        let end = self.visual_select_end?;
+        let (from, to) = if start <= end {
+            (start, end)
+        } else {
+            (end, start)
+        };
+        let lines: Vec<&str> = content.lines().collect();
+        if to >= lines.len() {
+            return None;
+        }
+        let selected: Vec<&str> = lines[from..=to].to_vec();
+        Some(selected.join("\n"))
+    }
+
+    pub fn cancel_visual_select(&mut self) {
+        self.input_mode = InputMode::ViewingArticle;
+        self.visual_select_start = None;
+        self.visual_select_end = None;
     }
 }
 
@@ -1296,5 +1392,131 @@ mod tests {
         assert!(app.search_query.is_none());
         assert!(app.search_matches.is_empty());
         assert_eq!(app.search_current, 0);
+    }
+
+    #[test]
+    fn test_start_visual_select() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.input_mode = InputMode::ViewingArticle;
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.article_scroll = 0;
+
+        app.start_visual_select();
+
+        assert_eq!(app.input_mode, InputMode::VisualSelect);
+        assert_eq!(app.visual_select_start, Some(0));
+        assert_eq!(app.visual_select_end, Some(0));
+    }
+
+    #[test]
+    fn test_visual_select_extend_down() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.input_mode = InputMode::VisualSelect;
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.visual_select_start = Some(0);
+        app.visual_select_end = Some(0);
+
+        app.visual_select_down();
+
+        assert_eq!(app.visual_select_end, Some(1));
+    }
+
+    #[test]
+    fn test_visual_select_extend_up() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.input_mode = InputMode::VisualSelect;
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.visual_select_start = Some(1);
+        app.visual_select_end = Some(1);
+
+        app.visual_select_up();
+
+        assert_eq!(app.visual_select_end, Some(0));
+    }
+
+    #[test]
+    fn test_visual_select_extend_down_at_bottom() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.input_mode = InputMode::VisualSelect;
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.visual_select_start = Some(2);
+        app.visual_select_end = Some(2);
+
+        app.visual_select_down();
+
+        assert_eq!(app.visual_select_end, Some(2));
+    }
+
+    #[test]
+    fn test_visual_select_extend_up_at_top() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.input_mode = InputMode::VisualSelect;
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.visual_select_start = Some(0);
+        app.visual_select_end = Some(0);
+
+        app.visual_select_up();
+
+        assert_eq!(app.visual_select_end, Some(0));
+    }
+
+    #[test]
+    fn test_get_selected_text_single_line() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.visual_select_start = Some(1);
+        app.visual_select_end = Some(1);
+
+        let selected = app.get_selected_text();
+
+        assert_eq!(selected, Some("Line 2".to_string()));
+    }
+
+    #[test]
+    fn test_get_selected_text_multiple_lines() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.visual_select_start = Some(0);
+        app.visual_select_end = Some(2);
+
+        let selected = app.get_selected_text();
+
+        assert_eq!(selected, Some("Line 1\nLine 2\nLine 3".to_string()));
+    }
+
+    #[test]
+    fn test_get_selected_text_reverse_selection() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.visual_select_start = Some(2);
+        app.visual_select_end = Some(0);
+
+        let selected = app.get_selected_text();
+
+        assert_eq!(selected, Some("Line 1\nLine 2\nLine 3".to_string()));
+    }
+
+    #[test]
+    fn test_cancel_visual_select() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.input_mode = InputMode::VisualSelect;
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.visual_select_start = Some(0);
+        app.visual_select_end = Some(1);
+
+        app.cancel_visual_select();
+
+        assert_eq!(app.input_mode, InputMode::ViewingArticle);
+        assert_eq!(app.visual_select_start, None);
+        assert_eq!(app.visual_select_end, None);
     }
 }
