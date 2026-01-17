@@ -337,6 +337,12 @@ fn run_event_loop(
                         KeyCode::Right | KeyCode::Char('l') => {
                             app.visual_select_right();
                         }
+                        KeyCode::Char('g') => {
+                            app.visual_select_to_top();
+                        }
+                        KeyCode::Char('G') => {
+                            app.visual_select_to_bottom();
+                        }
                         KeyCode::Char('y') => {
                             if let Some(text) = app.get_selected_text()
                                 && let Ok(mut clipboard) = Clipboard::new()
@@ -357,6 +363,12 @@ fn run_event_loop(
                         }
                         KeyCode::Up | KeyCode::Char('k') => {
                             app.visual_line_up();
+                        }
+                        KeyCode::Char('g') => {
+                            app.visual_line_to_top();
+                        }
+                        KeyCode::Char('G') => {
+                            app.visual_line_to_bottom();
                         }
                         KeyCode::Char('y') => {
                             if let Some(text) = app.get_selected_lines()
@@ -1105,6 +1117,21 @@ impl App {
         }
     }
 
+    pub fn visual_select_to_top(&mut self) {
+        self.visual_select_end = Some((0, 0));
+    }
+
+    pub fn visual_select_to_bottom(&mut self) {
+        if let Some(content) = &self.article_content {
+            let lines: Vec<&str> = content.lines().collect();
+            if let Some(last_line) = lines.last() {
+                let last_row = lines.len().saturating_sub(1);
+                let last_col = last_line.chars().count().saturating_sub(1);
+                self.visual_select_end = Some((last_row, last_col));
+            }
+        }
+    }
+
     pub fn get_selected_text(&self) -> Option<String> {
         let content = self.article_content.as_ref()?;
         let start = self.visual_select_start?;
@@ -1171,6 +1198,17 @@ impl App {
             && end > 0
         {
             self.visual_line_end = Some(end - 1);
+        }
+    }
+
+    pub fn visual_line_to_top(&mut self) {
+        self.visual_line_end = Some(0);
+    }
+
+    pub fn visual_line_to_bottom(&mut self) {
+        let line_count = self.article_line_count();
+        if line_count > 0 {
+            self.visual_line_end = Some(line_count - 1);
         }
     }
 
