@@ -677,7 +677,10 @@ fn draw_article_content(frame: &mut Frame, app: &App) {
                 let sel_end = sel_end.min(chars.len().saturating_sub(1));
                 if sel_start <= sel_end && !chars.is_empty() {
                     let selected: String = chars[sel_start..=sel_end].iter().collect();
-                    spans.push(Span::styled(selected, Style::default().add_modifier(Modifier::REVERSED)));
+                    spans.push(Span::styled(
+                        selected,
+                        Style::default().add_modifier(Modifier::REVERSED),
+                    ));
                 }
                 if sel_end + 1 < chars.len() {
                     let after: String = chars[sel_end + 1..].iter().collect();
@@ -692,7 +695,10 @@ fn draw_article_content(frame: &mut Frame, app: &App) {
             if is_cursor_line {
                 let mut spans = Vec::new();
                 if chars.is_empty() {
-                    spans.push(Span::styled(" ", Style::default().add_modifier(Modifier::REVERSED)));
+                    spans.push(Span::styled(
+                        " ",
+                        Style::default().add_modifier(Modifier::REVERSED),
+                    ));
                 } else {
                     let cursor_col = cursor_col.min(chars.len().saturating_sub(1));
                     if cursor_col > 0 {
@@ -700,7 +706,10 @@ fn draw_article_content(frame: &mut Frame, app: &App) {
                         spans.push(Span::raw(before));
                     }
                     let cursor_char: String = chars[cursor_col..=cursor_col].iter().collect();
-                    spans.push(Span::styled(cursor_char, Style::default().add_modifier(Modifier::REVERSED)));
+                    spans.push(Span::styled(
+                        cursor_char,
+                        Style::default().add_modifier(Modifier::REVERSED),
+                    ));
                     if cursor_col + 1 < chars.len() {
                         let after: String = chars[cursor_col + 1..].iter().collect();
                         spans.push(Span::raw(after));
@@ -713,8 +722,8 @@ fn draw_article_content(frame: &mut Frame, app: &App) {
         })
         .collect();
 
-    let content_widget = Paragraph::new(styled_lines)
-        .block(Block::default().borders(Borders::ALL).title(title));
+    let content_widget =
+        Paragraph::new(styled_lines).block(Block::default().borders(Borders::ALL).title(title));
     frame.render_widget(content_widget, area);
 }
 
@@ -1080,7 +1089,12 @@ impl App {
             let lines: Vec<&str> = content.lines().collect();
             if row < lines.len().saturating_sub(1) {
                 let new_row = row + 1;
-                let new_col = col.min(lines.get(new_row).map(|l| l.chars().count().saturating_sub(1)).unwrap_or(0));
+                let new_col = col.min(
+                    lines
+                        .get(new_row)
+                        .map(|l| l.chars().count().saturating_sub(1))
+                        .unwrap_or(0),
+                );
                 self.visual_select_end = Some((new_row, new_col));
             }
         }
@@ -1092,7 +1106,12 @@ impl App {
         {
             let lines: Vec<&str> = content.lines().collect();
             let new_row = row - 1;
-            let new_col = col.min(lines.get(new_row).map(|l| l.chars().count().saturating_sub(1)).unwrap_or(0));
+            let new_col = col.min(
+                lines
+                    .get(new_row)
+                    .map(|l| l.chars().count().saturating_sub(1))
+                    .unwrap_or(0),
+            );
             self.visual_select_end = Some((new_row, new_col));
         }
     }
@@ -1153,7 +1172,12 @@ impl App {
             Some(selected)
         } else {
             let mut result = String::new();
-            for (i, line) in lines.iter().enumerate().skip(start_row).take(end_row - start_row + 1) {
+            for (i, line) in lines
+                .iter()
+                .enumerate()
+                .skip(start_row)
+                .take(end_row - start_row + 1)
+            {
                 let chars: Vec<char> = line.chars().collect();
                 if i == start_row {
                     let selected: String = chars[start_col..].iter().collect();
