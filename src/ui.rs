@@ -240,30 +240,52 @@ fn run_event_loop(
                             app.input_mode = InputMode::Normal;
                             app.article_content = None;
                             app.article_scroll = 0;
+                            app.article_cursor = 0;
+                            app.article_cursor_col = 0;
                         }
                         KeyCode::Down | KeyCode::Char('j') => {
-                            app.article_scroll = app.article_scroll.saturating_add(1);
+                            app.article_cursor_down();
                         }
                         KeyCode::Up | KeyCode::Char('k') => {
-                            app.article_scroll = app.article_scroll.saturating_sub(1);
+                            app.article_cursor_up();
+                        }
+                        KeyCode::Left | KeyCode::Char('h') => {
+                            app.article_cursor_left();
+                        }
+                        KeyCode::Right | KeyCode::Char('l') => {
+                            app.article_cursor_right();
+                        }
+                        KeyCode::Char('0') => {
+                            app.article_cursor_line_start();
+                        }
+                        KeyCode::Char('$') => {
+                            app.article_cursor_line_end();
                         }
                         KeyCode::Char('g') => {
-                            app.article_scroll = 0;
+                            app.article_cursor_to_top();
                         }
                         KeyCode::Char('G') => {
-                            app.article_scroll = usize::MAX;
+                            app.article_cursor_to_bottom();
                         }
                         KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                            app.article_scroll = app.article_scroll.saturating_add(15);
+                            for _ in 0..15 {
+                                app.article_cursor_down();
+                            }
                         }
                         KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                            app.article_scroll = app.article_scroll.saturating_sub(15);
+                            for _ in 0..15 {
+                                app.article_cursor_up();
+                            }
                         }
                         KeyCode::Char('f') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                            app.article_scroll = app.article_scroll.saturating_add(30);
+                            for _ in 0..30 {
+                                app.article_cursor_down();
+                            }
                         }
                         KeyCode::Char('b') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                            app.article_scroll = app.article_scroll.saturating_sub(30);
+                            for _ in 0..30 {
+                                app.article_cursor_up();
+                            }
                         }
                         KeyCode::Char('o') => {
                             if let Some(article) = app.selected_article()
@@ -271,6 +293,12 @@ fn run_event_loop(
                             {
                                 app.set_status(format!("Failed to open browser: {}", e));
                             }
+                        }
+                        KeyCode::Char('v') => {
+                            app.start_visual_select();
+                        }
+                        KeyCode::Char('V') => {
+                            app.start_visual_line_select();
                         }
                         _ => {}
                     },
@@ -290,6 +318,66 @@ fn run_event_loop(
                         KeyCode::Char(c) => app.input_buffer.push(c),
                         KeyCode::Backspace => {
                             app.input_buffer.pop();
+                        }
+                        _ => {}
+                    },
+                    InputMode::VisualSelect => match key.code {
+                        KeyCode::Esc => {
+                            app.cancel_visual_select();
+                        }
+                        KeyCode::Down | KeyCode::Char('j') => {
+                            app.visual_select_down();
+                        }
+                        KeyCode::Up | KeyCode::Char('k') => {
+                            app.visual_select_up();
+                        }
+                        KeyCode::Left | KeyCode::Char('h') => {
+                            app.visual_select_left();
+                        }
+                        KeyCode::Right | KeyCode::Char('l') => {
+                            app.visual_select_right();
+                        }
+                        KeyCode::Char('g') => {
+                            app.visual_select_to_top();
+                        }
+                        KeyCode::Char('G') => {
+                            app.visual_select_to_bottom();
+                        }
+                        KeyCode::Char('y') => {
+                            if let Some(text) = app.get_selected_text()
+                                && let Ok(mut clipboard) = Clipboard::new()
+                                && clipboard.set_text(&text).is_ok()
+                            {
+                                app.set_status("Copied");
+                            }
+                            app.cancel_visual_select();
+                        }
+                        _ => {}
+                    },
+                    InputMode::VisualLine => match key.code {
+                        KeyCode::Esc => {
+                            app.cancel_visual_line_select();
+                        }
+                        KeyCode::Down | KeyCode::Char('j') => {
+                            app.visual_line_down();
+                        }
+                        KeyCode::Up | KeyCode::Char('k') => {
+                            app.visual_line_up();
+                        }
+                        KeyCode::Char('g') => {
+                            app.visual_line_to_top();
+                        }
+                        KeyCode::Char('G') => {
+                            app.visual_line_to_bottom();
+                        }
+                        KeyCode::Char('y') => {
+                            if let Some(text) = app.get_selected_lines()
+                                && let Ok(mut clipboard) = Clipboard::new()
+                                && clipboard.set_text(&text).is_ok()
+                            {
+                                app.set_status("Copied");
+                            }
+                            app.cancel_visual_line_select();
                         }
                         _ => {}
                     },
@@ -447,7 +535,9 @@ fn truncate_str(s: &str, max_width: usize) -> String {
 fn draw_ui(frame: &mut Frame, app: &App, list_state: &mut ListState) {
     match app.input_mode {
         InputMode::FeedList => draw_feed_list(frame, app),
-        InputMode::ViewingArticle => draw_article_content(frame, app),
+        InputMode::ViewingArticle | InputMode::VisualSelect | InputMode::VisualLine => {
+            draw_article_content(frame, app)
+        }
         _ => draw_article_list(frame, app, list_state),
     }
 }
@@ -512,19 +602,128 @@ fn draw_article_content(frame: &mut Frame, app: &App) {
     let content = app.article_content.as_deref().unwrap_or("");
     let lines: Vec<&str> = content.lines().collect();
     let visible_height = area.height.saturating_sub(2) as usize;
-    let max_scroll = lines.len().saturating_sub(visible_height);
-    let scroll = app.article_scroll.min(max_scroll);
 
-    let visible_lines: String = lines
+    let scroll = if app.article_cursor < app.article_scroll {
+        app.article_cursor
+    } else if app.article_cursor >= app.article_scroll + visible_height {
+        app.article_cursor.saturating_sub(visible_height - 1)
+    } else {
+        app.article_scroll
+    };
+
+    let char_selection = match (app.visual_select_start, app.visual_select_end) {
+        (Some(s), Some(e)) if app.input_mode == InputMode::VisualSelect => {
+            if s <= e {
+                Some((s, e))
+            } else {
+                Some((e, s))
+            }
+        }
+        _ => None,
+    };
+
+    let line_selection = match (app.visual_line_start, app.visual_line_end) {
+        (Some(s), Some(e)) if app.input_mode == InputMode::VisualLine => {
+            if s <= e {
+                Some((s, e))
+            } else {
+                Some((e, s))
+            }
+        }
+        _ => None,
+    };
+
+    let cursor_row = app.article_cursor;
+    let cursor_col = app.article_cursor_col;
+
+    let styled_lines: Vec<Line> = lines
         .iter()
+        .enumerate()
         .skip(scroll)
         .take(visible_height)
-        .copied()
-        .collect::<Vec<_>>()
-        .join("\n");
+        .map(|(i, line)| {
+            let chars: Vec<char> = line.chars().collect();
+            let is_cursor_line = i == cursor_row && app.input_mode == InputMode::ViewingArticle;
+
+            if let Some((start_row, end_row)) = line_selection
+                && i >= start_row
+                && i <= end_row
+            {
+                return Line::from(Span::styled(
+                    *line,
+                    Style::default().add_modifier(Modifier::REVERSED),
+                ));
+            }
+
+            if let Some(((start_row, start_col), (end_row, end_col))) = char_selection
+                && i >= start_row
+                && i <= end_row
+            {
+                let (sel_start, sel_end) = if start_row == end_row {
+                    (start_col, end_col)
+                } else if i == start_row {
+                    (start_col, chars.len().saturating_sub(1))
+                } else if i == end_row {
+                    (0, end_col)
+                } else {
+                    (0, chars.len().saturating_sub(1))
+                };
+
+                let mut spans = Vec::new();
+                if sel_start > 0 {
+                    let before: String = chars[..sel_start].iter().collect();
+                    spans.push(Span::raw(before));
+                }
+                let sel_end = sel_end.min(chars.len().saturating_sub(1));
+                if sel_start <= sel_end && !chars.is_empty() {
+                    let selected: String = chars[sel_start..=sel_end].iter().collect();
+                    spans.push(Span::styled(
+                        selected,
+                        Style::default().add_modifier(Modifier::REVERSED),
+                    ));
+                }
+                if sel_end + 1 < chars.len() {
+                    let after: String = chars[sel_end + 1..].iter().collect();
+                    spans.push(Span::raw(after));
+                }
+                if spans.is_empty() {
+                    spans.push(Span::raw(""));
+                }
+                return Line::from(spans);
+            }
+
+            if is_cursor_line {
+                let mut spans = Vec::new();
+                if chars.is_empty() {
+                    spans.push(Span::styled(
+                        " ",
+                        Style::default().add_modifier(Modifier::REVERSED),
+                    ));
+                } else {
+                    let cursor_col = cursor_col.min(chars.len().saturating_sub(1));
+                    if cursor_col > 0 {
+                        let before: String = chars[..cursor_col].iter().collect();
+                        spans.push(Span::raw(before));
+                    }
+                    let cursor_char: String = chars[cursor_col..=cursor_col].iter().collect();
+                    spans.push(Span::styled(
+                        cursor_char,
+                        Style::default().add_modifier(Modifier::REVERSED),
+                    ));
+                    if cursor_col + 1 < chars.len() {
+                        let after: String = chars[cursor_col + 1..].iter().collect();
+                        spans.push(Span::raw(after));
+                    }
+                }
+                Line::from(spans)
+            } else {
+                Line::from(*line)
+            }
+        })
+        .collect();
 
     let content_widget =
-        Paragraph::new(visible_lines).block(Block::default().borders(Borders::ALL).title(title));
+        Paragraph::new(styled_lines).block(Block::default().borders(Borders::ALL).title(title));
     frame.render_widget(content_widget, area);
 }
 
@@ -621,6 +820,8 @@ pub enum InputMode {
     FeedList,
     ViewingArticle,
     Searching,
+    VisualSelect,
+    VisualLine,
 }
 
 pub struct App {
@@ -640,10 +841,16 @@ pub struct App {
     pub feed_status: HashMap<String, bool>,
     pub article_content: Option<String>,
     pub article_scroll: usize,
+    pub article_cursor: usize,
+    pub article_cursor_col: usize,
     pub filter_feed_url: Option<String>,
     pub search_query: Option<String>,
     pub search_matches: Vec<usize>,
     pub search_current: usize,
+    pub visual_select_start: Option<(usize, usize)>,
+    pub visual_select_end: Option<(usize, usize)>,
+    pub visual_line_start: Option<usize>,
+    pub visual_line_end: Option<usize>,
 }
 
 impl App {
@@ -665,10 +872,16 @@ impl App {
             feed_status: HashMap::new(),
             article_content: None,
             article_scroll: 0,
+            article_cursor: 0,
+            article_cursor_col: 0,
             filter_feed_url: None,
             search_query: None,
             search_matches: Vec::new(),
             search_current: 0,
+            visual_select_start: None,
+            visual_select_end: None,
+            visual_line_start: None,
+            visual_line_end: None,
         }
     }
 
@@ -862,6 +1075,247 @@ impl App {
         self.search_query = None;
         self.search_matches.clear();
         self.search_current = 0;
+    }
+
+    pub fn start_visual_select(&mut self) {
+        self.input_mode = InputMode::VisualSelect;
+        let pos = (self.article_cursor, self.article_cursor_col);
+        self.visual_select_start = Some(pos);
+        self.visual_select_end = Some(pos);
+    }
+
+    pub fn visual_select_down(&mut self) {
+        if let (Some(content), Some((row, col))) = (&self.article_content, self.visual_select_end) {
+            let lines: Vec<&str> = content.lines().collect();
+            if row < lines.len().saturating_sub(1) {
+                let new_row = row + 1;
+                let new_col = col.min(
+                    lines
+                        .get(new_row)
+                        .map(|l| l.chars().count().saturating_sub(1))
+                        .unwrap_or(0),
+                );
+                self.visual_select_end = Some((new_row, new_col));
+            }
+        }
+    }
+
+    pub fn visual_select_up(&mut self) {
+        if let (Some(content), Some((row, col))) = (&self.article_content, self.visual_select_end)
+            && row > 0
+        {
+            let lines: Vec<&str> = content.lines().collect();
+            let new_row = row - 1;
+            let new_col = col.min(
+                lines
+                    .get(new_row)
+                    .map(|l| l.chars().count().saturating_sub(1))
+                    .unwrap_or(0),
+            );
+            self.visual_select_end = Some((new_row, new_col));
+        }
+    }
+
+    pub fn visual_select_right(&mut self) {
+        if let (Some(content), Some((row, col))) = (&self.article_content, self.visual_select_end) {
+            let lines: Vec<&str> = content.lines().collect();
+            if let Some(line) = lines.get(row) {
+                let max_col = line.chars().count().saturating_sub(1);
+                if col < max_col {
+                    self.visual_select_end = Some((row, col + 1));
+                }
+            }
+        }
+    }
+
+    pub fn visual_select_left(&mut self) {
+        if let Some((row, col)) = self.visual_select_end
+            && col > 0
+        {
+            self.visual_select_end = Some((row, col - 1));
+        }
+    }
+
+    pub fn visual_select_to_top(&mut self) {
+        self.visual_select_end = Some((0, 0));
+    }
+
+    pub fn visual_select_to_bottom(&mut self) {
+        if let Some(content) = &self.article_content {
+            let lines: Vec<&str> = content.lines().collect();
+            if let Some(last_line) = lines.last() {
+                let last_row = lines.len().saturating_sub(1);
+                let last_col = last_line.chars().count().saturating_sub(1);
+                self.visual_select_end = Some((last_row, last_col));
+            }
+        }
+    }
+
+    pub fn get_selected_text(&self) -> Option<String> {
+        let content = self.article_content.as_ref()?;
+        let start = self.visual_select_start?;
+        let end = self.visual_select_end?;
+        let ((start_row, start_col), (end_row, end_col)) = if start <= end {
+            (start, end)
+        } else {
+            (end, start)
+        };
+        let lines: Vec<&str> = content.lines().collect();
+        if start_row >= lines.len() || end_row >= lines.len() {
+            return None;
+        }
+        if start_row == end_row {
+            let line = lines[start_row];
+            let chars: Vec<char> = line.chars().collect();
+            let end_col = end_col.min(chars.len().saturating_sub(1));
+            let selected: String = chars[start_col..=end_col].iter().collect();
+            Some(selected)
+        } else {
+            let mut result = String::new();
+            for (i, line) in lines
+                .iter()
+                .enumerate()
+                .skip(start_row)
+                .take(end_row - start_row + 1)
+            {
+                let chars: Vec<char> = line.chars().collect();
+                if i == start_row {
+                    let selected: String = chars[start_col..].iter().collect();
+                    result.push_str(&selected);
+                } else if i == end_row {
+                    result.push('\n');
+                    let end_col = end_col.min(chars.len().saturating_sub(1));
+                    let selected: String = chars[..=end_col].iter().collect();
+                    result.push_str(&selected);
+                } else {
+                    result.push('\n');
+                    result.push_str(line);
+                }
+            }
+            Some(result)
+        }
+    }
+
+    pub fn cancel_visual_select(&mut self) {
+        self.input_mode = InputMode::ViewingArticle;
+        self.visual_select_start = None;
+        self.visual_select_end = None;
+    }
+
+    pub fn start_visual_line_select(&mut self) {
+        self.input_mode = InputMode::VisualLine;
+        self.visual_line_start = Some(self.article_cursor);
+        self.visual_line_end = Some(self.article_cursor);
+    }
+
+    pub fn visual_line_down(&mut self) {
+        if let Some(end) = self.visual_line_end {
+            let line_count = self.article_line_count();
+            if line_count > 0 && end < line_count - 1 {
+                self.visual_line_end = Some(end + 1);
+            }
+        }
+    }
+
+    pub fn visual_line_up(&mut self) {
+        if let Some(end) = self.visual_line_end
+            && end > 0
+        {
+            self.visual_line_end = Some(end - 1);
+        }
+    }
+
+    pub fn visual_line_to_top(&mut self) {
+        self.visual_line_end = Some(0);
+    }
+
+    pub fn visual_line_to_bottom(&mut self) {
+        let line_count = self.article_line_count();
+        if line_count > 0 {
+            self.visual_line_end = Some(line_count - 1);
+        }
+    }
+
+    pub fn get_selected_lines(&self) -> Option<String> {
+        let content = self.article_content.as_ref()?;
+        let start = self.visual_line_start?;
+        let end = self.visual_line_end?;
+        let (from, to) = if start <= end {
+            (start, end)
+        } else {
+            (end, start)
+        };
+        let lines: Vec<&str> = content.lines().collect();
+        if to >= lines.len() {
+            return None;
+        }
+        let selected: Vec<&str> = lines[from..=to].to_vec();
+        Some(selected.join("\n"))
+    }
+
+    pub fn cancel_visual_line_select(&mut self) {
+        self.input_mode = InputMode::ViewingArticle;
+        self.visual_line_start = None;
+        self.visual_line_end = None;
+    }
+
+    fn article_line_count(&self) -> usize {
+        self.article_content
+            .as_ref()
+            .map(|c| c.lines().count())
+            .unwrap_or(0)
+    }
+
+    pub fn article_cursor_down(&mut self) {
+        let line_count = self.article_line_count();
+        if line_count > 0 && self.article_cursor < line_count - 1 {
+            self.article_cursor += 1;
+        }
+    }
+
+    pub fn article_cursor_up(&mut self) {
+        self.article_cursor = self.article_cursor.saturating_sub(1);
+    }
+
+    pub fn article_cursor_to_top(&mut self) {
+        self.article_cursor = 0;
+    }
+
+    pub fn article_cursor_to_bottom(&mut self) {
+        let line_count = self.article_line_count();
+        if line_count > 0 {
+            self.article_cursor = line_count - 1;
+        }
+    }
+
+    fn current_line_length(&self) -> usize {
+        self.article_content
+            .as_ref()
+            .and_then(|c| c.lines().nth(self.article_cursor))
+            .map(|l| l.chars().count())
+            .unwrap_or(0)
+    }
+
+    pub fn article_cursor_right(&mut self) {
+        let line_len = self.current_line_length();
+        if line_len > 0 && self.article_cursor_col < line_len - 1 {
+            self.article_cursor_col += 1;
+        }
+    }
+
+    pub fn article_cursor_left(&mut self) {
+        self.article_cursor_col = self.article_cursor_col.saturating_sub(1);
+    }
+
+    pub fn article_cursor_line_start(&mut self) {
+        self.article_cursor_col = 0;
+    }
+
+    pub fn article_cursor_line_end(&mut self) {
+        let line_len = self.current_line_length();
+        if line_len > 0 {
+            self.article_cursor_col = line_len - 1;
+        }
     }
 }
 
@@ -1296,5 +1750,393 @@ mod tests {
         assert!(app.search_query.is_none());
         assert!(app.search_matches.is_empty());
         assert_eq!(app.search_current, 0);
+    }
+
+    #[test]
+    fn test_start_visual_select() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.input_mode = InputMode::ViewingArticle;
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.article_scroll = 0;
+
+        app.start_visual_select();
+
+        assert_eq!(app.input_mode, InputMode::VisualSelect);
+        assert_eq!(app.visual_select_start, Some((0, 0)));
+        assert_eq!(app.visual_select_end, Some((0, 0)));
+    }
+
+    #[test]
+    fn test_visual_select_extend_down() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.input_mode = InputMode::VisualSelect;
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.visual_select_start = Some((0, 0));
+        app.visual_select_end = Some((0, 0));
+
+        app.visual_select_down();
+
+        assert_eq!(app.visual_select_end.map(|(r, _)| r), Some(1));
+    }
+
+    #[test]
+    fn test_visual_select_extend_up() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.input_mode = InputMode::VisualSelect;
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.visual_select_start = Some((1, 0));
+        app.visual_select_end = Some((1, 0));
+
+        app.visual_select_up();
+
+        assert_eq!(app.visual_select_end.map(|(r, _)| r), Some(0));
+    }
+
+    #[test]
+    fn test_visual_select_extend_down_at_bottom() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.input_mode = InputMode::VisualSelect;
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.visual_select_start = Some((2, 0));
+        app.visual_select_end = Some((2, 0));
+
+        app.visual_select_down();
+
+        assert_eq!(app.visual_select_end.map(|(r, _)| r), Some(2));
+    }
+
+    #[test]
+    fn test_visual_select_extend_up_at_top() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.input_mode = InputMode::VisualSelect;
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.visual_select_start = Some((0, 0));
+        app.visual_select_end = Some((0, 0));
+
+        app.visual_select_up();
+
+        assert_eq!(app.visual_select_end.map(|(r, _)| r), Some(0));
+    }
+
+    #[test]
+    fn test_get_selected_text_single_line() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.visual_select_start = Some((1, 0));
+        app.visual_select_end = Some((1, 5));
+
+        let selected = app.get_selected_text();
+
+        assert_eq!(selected, Some("Line 2".to_string()));
+    }
+
+    #[test]
+    fn test_get_selected_text_multiple_lines() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.visual_select_start = Some((0, 0));
+        app.visual_select_end = Some((2, 5));
+
+        let selected = app.get_selected_text();
+
+        assert_eq!(selected, Some("Line 1\nLine 2\nLine 3".to_string()));
+    }
+
+    #[test]
+    fn test_get_selected_text_reverse_selection() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.visual_select_start = Some((2, 5));
+        app.visual_select_end = Some((0, 0));
+
+        let selected = app.get_selected_text();
+
+        assert_eq!(selected, Some("Line 1\nLine 2\nLine 3".to_string()));
+    }
+
+    #[test]
+    fn test_cancel_visual_select() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.input_mode = InputMode::VisualSelect;
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.visual_select_start = Some((0, 0));
+        app.visual_select_end = Some((1, 0));
+
+        app.cancel_visual_select();
+
+        assert_eq!(app.input_mode, InputMode::ViewingArticle);
+        assert_eq!(app.visual_select_start, None);
+        assert_eq!(app.visual_select_end, None);
+    }
+
+    #[test]
+    fn test_article_cursor_down() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.article_cursor = 0;
+
+        app.article_cursor_down();
+
+        assert_eq!(app.article_cursor, 1);
+    }
+
+    #[test]
+    fn test_article_cursor_down_at_bottom() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.article_cursor = 2;
+
+        app.article_cursor_down();
+
+        assert_eq!(app.article_cursor, 2);
+    }
+
+    #[test]
+    fn test_article_cursor_up() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.article_cursor = 2;
+
+        app.article_cursor_up();
+
+        assert_eq!(app.article_cursor, 1);
+    }
+
+    #[test]
+    fn test_article_cursor_up_at_top() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.article_cursor = 0;
+
+        app.article_cursor_up();
+
+        assert_eq!(app.article_cursor, 0);
+    }
+
+    #[test]
+    fn test_article_cursor_to_top() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.article_cursor = 2;
+
+        app.article_cursor_to_top();
+
+        assert_eq!(app.article_cursor, 0);
+    }
+
+    #[test]
+    fn test_article_cursor_to_bottom() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.article_cursor = 0;
+
+        app.article_cursor_to_bottom();
+
+        assert_eq!(app.article_cursor, 2);
+    }
+
+    #[test]
+    fn test_visual_select_starts_at_cursor() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.input_mode = InputMode::ViewingArticle;
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.article_cursor = 1;
+        app.article_cursor_col = 2;
+
+        app.start_visual_select();
+
+        assert_eq!(app.visual_select_start, Some((1, 2)));
+        assert_eq!(app.visual_select_end, Some((1, 2)));
+    }
+
+    #[test]
+    fn test_article_cursor_right() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.article_content = Some("Hello".to_string());
+        app.article_cursor = 0;
+        app.article_cursor_col = 0;
+
+        app.article_cursor_right();
+
+        assert_eq!(app.article_cursor_col, 1);
+    }
+
+    #[test]
+    fn test_article_cursor_right_at_end() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.article_content = Some("Hello".to_string());
+        app.article_cursor = 0;
+        app.article_cursor_col = 4;
+
+        app.article_cursor_right();
+
+        assert_eq!(app.article_cursor_col, 4);
+    }
+
+    #[test]
+    fn test_article_cursor_left() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.article_content = Some("Hello".to_string());
+        app.article_cursor = 0;
+        app.article_cursor_col = 3;
+
+        app.article_cursor_left();
+
+        assert_eq!(app.article_cursor_col, 2);
+    }
+
+    #[test]
+    fn test_article_cursor_left_at_start() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.article_content = Some("Hello".to_string());
+        app.article_cursor = 0;
+        app.article_cursor_col = 0;
+
+        app.article_cursor_left();
+
+        assert_eq!(app.article_cursor_col, 0);
+    }
+
+    #[test]
+    fn test_get_selected_text_character_based() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.article_content = Some("Hello World".to_string());
+        app.visual_select_start = Some((0, 0));
+        app.visual_select_end = Some((0, 4));
+
+        let selected = app.get_selected_text();
+
+        assert_eq!(selected, Some("Hello".to_string()));
+    }
+
+    #[test]
+    fn test_get_selected_text_multiline_character_based() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.article_content = Some("Hello\nWorld".to_string());
+        app.visual_select_start = Some((0, 2));
+        app.visual_select_end = Some((1, 2));
+
+        let selected = app.get_selected_text();
+
+        assert_eq!(selected, Some("llo\nWor".to_string()));
+    }
+
+    #[test]
+    fn test_start_visual_line_select() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.input_mode = InputMode::ViewingArticle;
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.article_cursor = 1;
+
+        app.start_visual_line_select();
+
+        assert_eq!(app.input_mode, InputMode::VisualLine);
+        assert_eq!(app.visual_line_start, Some(1));
+        assert_eq!(app.visual_line_end, Some(1));
+    }
+
+    #[test]
+    fn test_visual_line_extend_down() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.input_mode = InputMode::VisualLine;
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.visual_line_start = Some(0);
+        app.visual_line_end = Some(0);
+
+        app.visual_line_down();
+
+        assert_eq!(app.visual_line_end, Some(1));
+    }
+
+    #[test]
+    fn test_visual_line_extend_up() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.input_mode = InputMode::VisualLine;
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.visual_line_start = Some(1);
+        app.visual_line_end = Some(1);
+
+        app.visual_line_up();
+
+        assert_eq!(app.visual_line_end, Some(0));
+    }
+
+    #[test]
+    fn test_get_selected_lines_single() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.visual_line_start = Some(1);
+        app.visual_line_end = Some(1);
+
+        let selected = app.get_selected_lines();
+
+        assert_eq!(selected, Some("Line 2".to_string()));
+    }
+
+    #[test]
+    fn test_get_selected_lines_multiple() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.visual_line_start = Some(0);
+        app.visual_line_end = Some(2);
+
+        let selected = app.get_selected_lines();
+
+        assert_eq!(selected, Some("Line 1\nLine 2\nLine 3".to_string()));
+    }
+
+    #[test]
+    fn test_get_selected_lines_reverse() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.article_content = Some("Line 1\nLine 2\nLine 3".to_string());
+        app.visual_line_start = Some(2);
+        app.visual_line_end = Some(0);
+
+        let selected = app.get_selected_lines();
+
+        assert_eq!(selected, Some("Line 1\nLine 2\nLine 3".to_string()));
+    }
+
+    #[test]
+    fn test_cancel_visual_line_select() {
+        let articles = create_test_articles(1);
+        let mut app = App::new(articles, TEST_REFRESH_INTERVAL, false);
+        app.input_mode = InputMode::VisualLine;
+        app.visual_line_start = Some(0);
+        app.visual_line_end = Some(1);
+
+        app.cancel_visual_line_select();
+
+        assert_eq!(app.input_mode, InputMode::ViewingArticle);
+        assert_eq!(app.visual_line_start, None);
+        assert_eq!(app.visual_line_end, None);
     }
 }
