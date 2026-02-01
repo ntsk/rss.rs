@@ -11,6 +11,7 @@ A simple RSS/Atom feed reader for the terminal.
 - RSS 2.0 and Atom support
 - OPML import/export
 - Article search (`/`, `n`, `N`)
+- Reader mode with readability extraction
 - Auto-refresh
 
 ## Installation
