@@ -10,7 +10,6 @@ A simple RSS/Atom feed reader for the terminal.
 - Vim-style keybindings
 - RSS 1.0/2.0 and Atom support
 - OPML import/export
-- Article search (`/`, `n`, `N`)
 - Reader mode with readability extraction
 - Auto-refresh
 
