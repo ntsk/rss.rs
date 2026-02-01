@@ -8,7 +8,7 @@ A simple RSS/Atom feed reader for the terminal.
 ## Features
 
 - Vim-style keybindings
-- RSS 2.0 and Atom support
+- RSS 1.0/2.0 and Atom support
 - OPML import/export
 - Article search (`/`, `n`, `N`)
 - Reader mode with readability extraction
