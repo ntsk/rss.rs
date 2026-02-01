@@ -119,7 +119,7 @@ pub fn fetch_article_content(url: &str, width: usize) -> Result<String> {
         content_html = extracted.content;
     }
 
-    Ok(html2text::from_read(content_html.as_bytes(), width))
+    Ok(html2text::from_read(content_html.as_bytes(), width)?)
 }
 
 pub fn parse_feed(content: &str) -> Result<Vec<Article>> {
