@@ -35,10 +35,8 @@ fn parse_opml(content: &str) -> Result<Vec<Feed>> {
                         b"xmlUrl" => {
                             url = Some(String::from_utf8_lossy(&attr.value).to_string());
                         }
-                        b"title" | b"text" => {
-                            if title.is_none() {
-                                title = Some(String::from_utf8_lossy(&attr.value).to_string());
-                            }
+                        b"title" | b"text" if title.is_none() => {
+                            title = Some(String::from_utf8_lossy(&attr.value).to_string());
                         }
                         _ => {}
                     }

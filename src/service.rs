@@ -67,7 +67,7 @@ pub fn fetch_all_feeds(manager: &SubscriptionManager) -> FetchResult {
         .map(|o| (o.url.clone(), o.success))
         .collect();
 
-    articles.sort_by(|a, b| b.published.cmp(&a.published));
+    articles.sort_by_key(|b| std::cmp::Reverse(b.published));
 
     FetchResult {
         articles,

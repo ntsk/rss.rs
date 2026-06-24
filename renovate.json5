@@ -20,6 +20,21 @@
       "matchManagers": ["github-actions"],
       "groupName": "github actions",
       "automerge": true
+    },
+    {
+      "matchManagers": ["custom.regex"],
+      "matchDepNames": ["rust"],
+      "groupName": "rust toolchain"
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/(^|/)rust-toolchain\\.toml$/"],
+      "matchStrings": ["channel\\s*=\\s*\"(?<currentValue>\\d+\\.\\d+\\.\\d+)\""],
+      "depNameTemplate": "rust",
+      "packageNameTemplate": "rust-lang/rust",
+      "datasourceTemplate": "github-releases"
     }
   ],
   "schedule": ["before 9am on monday"]
