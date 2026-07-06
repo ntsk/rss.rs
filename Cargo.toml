@@ -23,12 +23,12 @@ crossterm = "0.29"
 chrono = { version = "0.4", features = ["serde"] }
 anyhow = "1"
 toml = "1.0"
-quick-xml = "0.39"
+quick-xml = "0.41"
 rayon = "1.10"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 arboard = "3"
-html2text = "0.16"
+html2text = "0.17"
 readability = "0.3"
 
 [dev-dependencies]
